@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { MAX_INPUT_LENGTH, type AnalysisResult } from '@/lib/analysis/types';
 
@@ -144,10 +144,11 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
                 이메일
               </TabsTrigger>
             </TabsList>
-          </Tabs>
 
-          {messageType === 'sms' ? (
-            <div key="sms" className="animate-in fade-in-0 slide-in-from-top-1 space-y-1.5 duration-200">
+            <TabsContent
+              value="sms"
+              className="animate-in fade-in-0 slide-in-from-top-1 space-y-1.5 pt-4 duration-200"
+            >
               <Label htmlFor="senderNumber">발신번호</Label>
               <Input
                 id="senderNumber"
@@ -156,9 +157,12 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
                 value={senderNumber}
                 onChange={(e) => setSenderNumber(e.target.value)}
               />
-            </div>
-          ) : (
-            <div key="email" className="animate-in fade-in-0 slide-in-from-top-1 space-y-4 duration-200">
+            </TabsContent>
+
+            <TabsContent
+              value="email"
+              className="animate-in fade-in-0 slide-in-from-top-1 space-y-4 pt-4 duration-200"
+            >
               <div className="space-y-1.5">
                 <Label htmlFor="senderAddress">발신 주소</Label>
                 <Input
@@ -179,8 +183,8 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
                   onChange={(e) => setSubject(e.target.value)}
                 />
               </div>
-            </div>
-          )}
+            </TabsContent>
+          </Tabs>
 
           <div className="space-y-1.5">
             <Label htmlFor="messageBody">문자/이메일 본문</Label>

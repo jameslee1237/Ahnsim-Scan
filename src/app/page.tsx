@@ -16,7 +16,11 @@ const HomePage = () => {
   // 에게도 새 결과가 나타났음을 알린다.
   useEffect(() => {
     if (result) {
-      resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      resultRef.current?.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'start',
+      });
     }
   }, [result]);
 
