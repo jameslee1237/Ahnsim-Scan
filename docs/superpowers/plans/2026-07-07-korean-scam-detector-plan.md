@@ -678,7 +678,13 @@ Create `src/lib/security/rateLimit.test.ts`:
 ```ts
 import { describe, expect, it, vi } from 'vitest';
 
-const limitMock = vi.fn();
+// vi.mock factories are hoisted above this file's own top-level statements.
+// rateLimit.ts constructs its Ratelimit client at module top level (`const
+// ipRatelimit = new Ratelimit(...)`), so that construction happens during
+// this test file's `import { checkIpRateLimit } from './rateLimit'` line —
+// before a plain `const limitMock = vi.fn()` written above it would actually
+// run. Use vi.hoisted() so the mock fn is guaranteed to exist by then.
+const { limitMock } = vi.hoisted(() => ({ limitMock: vi.fn() }));
 
 // Both mocks below use `function`, not arrow functions — arrow functions are
 // never constructible in JS, and rateLimit.ts invokes both with `new`.
@@ -776,8 +782,16 @@ Create `src/lib/security/quotaGuard.test.ts`:
 ```ts
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-const incrMock = vi.fn();
-const expireMock = vi.fn();
+// vi.mock factories are hoisted above this file's own top-level statements.
+// quotaGuard.ts constructs its Redis client at module top level (`const redis
+// = new Redis(...)`), so that construction happens during this test file's
+// `import { checkGlobalQuota } from './quotaGuard'` line — before a plain
+// `const incrMock = vi.fn()` written above it would actually run. Use
+// vi.hoisted() so the mock fns are guaranteed to exist by then.
+const { incrMock, expireMock } = vi.hoisted(() => ({
+  incrMock: vi.fn(),
+  expireMock: vi.fn(),
+}));
 
 // `function`, not an arrow function — arrow functions are never constructible
 // in JS, and quotaGuard.ts invokes this with `new Redis(...)`.
