@@ -37,6 +37,7 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
   const [turnstileToken, setTurnstileToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [scriptLoadError, setScriptLoadError] = useState(false);
   const widgetRef = useRef<HTMLDivElement>(null);
   const renderedRef = useRef(false);
   const widgetIdRef = useRef<string | null>(null);
@@ -114,12 +115,17 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" onLoad={renderTurnstile} />
+      <Script
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+        onLoad={renderTurnstile}
+        onError={() => setScriptLoadError(true)}
+      />
 
       <div className="flex gap-4">
         <label className="flex items-center gap-1">
           <input
             type="radio"
+            name="messageType"
             checked={messageType === 'sms'}
             onChange={() => setMessageType('sms')}
           />
@@ -128,6 +134,7 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
         <label className="flex items-center gap-1">
           <input
             type="radio"
+            name="messageType"
             checked={messageType === 'email'}
             onChange={() => setMessageType('email')}
           />
@@ -136,34 +143,56 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
       </div>
 
       {messageType === 'sms' ? (
-        <input
-          type="text"
-          placeholder="발신번호"
-          value={senderNumber}
-          onChange={(e) => setSenderNumber(e.target.value)}
-          className={inputClass}
-        />
+        <div>
+          <label htmlFor="senderNumber" className="sr-only">
+            발신번호
+          </label>
+          <input
+            id="senderNumber"
+            type="text"
+            placeholder="발신번호"
+            value={senderNumber}
+            onChange={(e) => setSenderNumber(e.target.value)}
+            className={inputClass}
+          />
+        </div>
       ) : (
         <div className="space-y-2">
-          <input
-            type="text"
-            placeholder="발신 주소"
-            value={senderAddress}
-            onChange={(e) => setSenderAddress(e.target.value)}
-            className={inputClass}
-          />
-          <input
-            type="text"
-            placeholder="제목"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className={inputClass}
-          />
+          <div>
+            <label htmlFor="senderAddress" className="sr-only">
+              발신 주소
+            </label>
+            <input
+              id="senderAddress"
+              type="text"
+              placeholder="발신 주소"
+              value={senderAddress}
+              onChange={(e) => setSenderAddress(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label htmlFor="subject" className="sr-only">
+              제목
+            </label>
+            <input
+              id="subject"
+              type="text"
+              placeholder="제목"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className={inputClass}
+            />
+          </div>
         </div>
       )}
 
       <div>
+        <label htmlFor="messageBody" className="sr-only">
+          문자/이메일 본문
+        </label>
         <textarea
+          id="messageBody"
           value={text}
           maxLength={MAX_INPUT_LENGTH}
           onChange={(e) => setText(e.target.value)}
@@ -176,6 +205,12 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
       </div>
 
       <div ref={widgetRef} />
+
+      {scriptLoadError && (
+        <p role="alert" className="text-sm text-red-600">
+          보안 위젯을 불러오지 못했습니다. 광고 차단 확장 프로그램을 확인해주세요.
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-red-600">
