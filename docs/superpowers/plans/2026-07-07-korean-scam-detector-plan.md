@@ -784,14 +784,16 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 // vi.mock factories are hoisted above this file's own top-level statements.
 // quotaGuard.ts constructs its Redis client at module top level (`const redis
-// = new Redis(...)`), so that construction happens during this test file's
-// `import { checkGlobalQuota } from './quotaGuard'` line — before a plain
-// `const incrMock = vi.fn()` written above it would actually run. Use
-// vi.hoisted() so the mock fns are guaranteed to exist by then.
-const { incrMock, expireMock } = vi.hoisted(() => ({
-  incrMock: vi.fn(),
-  expireMock: vi.fn(),
-}));
+// = new Redis(...)`) and now validates UPSTASH_REDIS_REST_URL/TOKEN at that
+// same load time, so both the mock fns and the env vars must be set inside
+// vi.hoisted() — a plain `const`/`process.env.X = ...` written above the
+// vi.mock calls would still run after this test file's
+// `import { checkGlobalQuota } from './quotaGuard'` line triggers that load.
+const { incrMock, expireMock } = vi.hoisted(() => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  return { incrMock: vi.fn(), expireMock: vi.fn() };
+});
 
 // `function`, not an arrow function — arrow functions are never constructible
 // in JS, and quotaGuard.ts invokes this with `new Redis(...)`.
@@ -844,9 +846,16 @@ Create `src/lib/security/quotaGuard.ts`:
 import 'server-only';
 import { Redis } from '@upstash/redis';
 
+const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+if (!upstashUrl || !upstashToken) {
+  throw new Error('UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN is not set');
+}
+
 const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  url: upstashUrl,
+  token: upstashToken,
 });
 
 // Kept below Gemini's actual free-tier ceiling as a safety margin — verify
