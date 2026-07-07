@@ -391,9 +391,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 const generateContentMock = vi.fn();
 
 vi.mock('@google/genai', () => ({
-  GoogleGenAI: vi.fn().mockImplementation(() => ({
-    models: { generateContent: generateContentMock },
-  })),
+  // Must be a `function`, not an arrow function — arrow functions are never
+  // constructible in JS, and this mock is invoked with `new GoogleGenAI(...)`.
+  GoogleGenAI: vi.fn().mockImplementation(function () {
+    return { models: { generateContent: generateContentMock } };
+  }),
   Type: { OBJECT: 'OBJECT', STRING: 'STRING', NUMBER: 'NUMBER', ARRAY: 'ARRAY' },
 }));
 
@@ -640,13 +642,19 @@ import { describe, expect, it, vi } from 'vitest';
 
 const limitMock = vi.fn();
 
+// Both mocks below use `function`, not arrow functions — arrow functions are
+// never constructible in JS, and rateLimit.ts invokes both with `new`.
 vi.mock('@upstash/redis', () => ({
-  Redis: vi.fn().mockImplementation(() => ({})),
+  Redis: vi.fn().mockImplementation(function () {
+    return {};
+  }),
 }));
 
 vi.mock('@upstash/ratelimit', () => ({
   Ratelimit: Object.assign(
-    vi.fn().mockImplementation(() => ({ limit: limitMock })),
+    vi.fn().mockImplementation(function () {
+      return { limit: limitMock };
+    }),
     { slidingWindow: vi.fn() },
   ),
 }));
@@ -733,8 +741,12 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 const incrMock = vi.fn();
 const expireMock = vi.fn();
 
+// `function`, not an arrow function — arrow functions are never constructible
+// in JS, and quotaGuard.ts invokes this with `new Redis(...)`.
 vi.mock('@upstash/redis', () => ({
-  Redis: vi.fn().mockImplementation(() => ({ incr: incrMock, expire: expireMock })),
+  Redis: vi.fn().mockImplementation(function () {
+    return { incr: incrMock, expire: expireMock };
+  }),
 }));
 
 import { checkGlobalQuota } from './quotaGuard';
