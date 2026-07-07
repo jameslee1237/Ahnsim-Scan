@@ -14,10 +14,10 @@ Next.js 16 (App Router, Route Handlers only, no separate backend), React 19, Typ
 
 ## Commands
 
-- `npm run dev` — start dev server
-- `npm test` — run Vitest once (not watch mode)
-- `npm run build` — production build
-- `npm run lint` — ESLint
+- `pnpm dev` — start dev server
+- `pnpm test` — run Vitest once (not watch mode)
+- `pnpm build` — production build
+- `pnpm lint` — ESLint
 
 ## Project structure
 
