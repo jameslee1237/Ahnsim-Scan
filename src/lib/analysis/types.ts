@@ -29,11 +29,24 @@ export type AnalysisInput = z.infer<typeof AnalysisInputSchema>;
 // 지시를 어길 수 있다는 것을 실제로 확인했다 — Groq gpt-oss-20b가 verdict
 // "위험"에 riskScore 0.92(0-100이 아닌 0-1 비율)를 반환한 사례가 있었고,
 // 이는 min(0)/max(100) 범위 검사만으로는 걸러지지 않는다.
-const VERDICT_RISK_SCORE_RANGES: Record<'안전' | '의심' | '위험', readonly [number, number]> = {
+//
+// 이 구간 값은 systemPrompt.ts와 두 provider(geminiProvider.ts,
+// groqProvider.ts)의 JSON 스키마 설명 문구에도 등장한다 — 하드코딩된 문자열
+// 4곳이 서로 어긋날 위험을 피하기 위해, 여기서 내보낸 텍스트를 세 곳 모두
+// 그대로 가져다 쓴다(스키마 표현 자체는 SDK별로 다를 수밖에 없어 구조까지
+// 공유하지는 않는다).
+export const VERDICT_RISK_SCORE_RANGES: Record<'안전' | '의심' | '위험', readonly [number, number]> = {
   안전: [0, 30],
   의심: [31, 70],
   위험: [71, 100],
 };
+
+export const VERDICT_BAND_TEXT = Object.entries(VERDICT_RISK_SCORE_RANGES)
+  .map(([verdict, [min, max]]) => `${min}-${max} ${verdict}`)
+  .join(', ');
+
+export const RISK_SCORE_FIELD_DESCRIPTION =
+  '0에서 100 사이의 정수 위험도 점수 (예: 85). 0에서 1 사이의 비율이 아님.';
 
 export const AnalysisResultSchema = z
   .object({

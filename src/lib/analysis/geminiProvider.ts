@@ -1,6 +1,12 @@
 import 'server-only';
 import { GoogleGenAI, Type } from '@google/genai';
-import { AnalysisResultSchema, type AnalysisInput, type AnalysisResult } from './types';
+import {
+  AnalysisResultSchema,
+  RISK_SCORE_FIELD_DESCRIPTION,
+  VERDICT_BAND_TEXT,
+  type AnalysisInput,
+  type AnalysisResult,
+} from './types';
 import { SYSTEM_PROMPT, buildUserContent } from './systemPrompt';
 
 // flash-lite documents a materially larger free-tier daily quota than flash
@@ -38,11 +44,11 @@ export const analyzeWithGemini = async (input: AnalysisInput): Promise<AnalysisR
           verdict: {
             type: Type.STRING,
             enum: ['안전', '의심', '위험'],
-            description: '판정 결과. riskScore와 반드시 일치해야 함 (0-30=안전, 31-70=의심, 71-100=위험).',
+            description: `판정 결과. riskScore와 반드시 일치해야 함 (${VERDICT_BAND_TEXT}).`,
           },
           riskScore: {
             type: Type.INTEGER,
-            description: '0에서 100 사이의 정수 위험도 점수 (예: 85). 0에서 1 사이의 비율이 아님.',
+            description: RISK_SCORE_FIELD_DESCRIPTION,
           },
           redFlags: {
             type: Type.ARRAY,

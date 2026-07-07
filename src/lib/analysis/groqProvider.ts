@@ -1,6 +1,12 @@
 import 'server-only';
 import Groq from 'groq-sdk';
-import { AnalysisResultSchema, type AnalysisInput, type AnalysisResult } from './types';
+import {
+  AnalysisResultSchema,
+  RISK_SCORE_FIELD_DESCRIPTION,
+  VERDICT_BAND_TEXT,
+  type AnalysisInput,
+  type AnalysisResult,
+} from './types';
 import { SYSTEM_PROMPT, buildUserContent } from './systemPrompt';
 
 // gpt-oss-20b is one of only two Groq models that support strict structured
@@ -8,7 +14,13 @@ import { SYSTEM_PROMPT, buildUserContent } from './systemPrompt';
 // reliability guarantee Gemini's responseSchema gives us. Llama models on
 // Groq only support best-effort (non-strict) JSON mode.
 const MODEL_NAME = 'openai/gpt-oss-20b';
-const MAX_OUTPUT_TOKENS = 800;
+// gpt-oss 모델은 기본적으로 reasoning_effort: 'medium'으로 동작하며, 추론
+// 토큰이 max_completion_tokens 예산을 content와 나눠 쓴다 (실제 테스트에서
+// 348 토큰 중 144 토큰, 약 41%가 추론에 소모됨). Gemini의
+// thinkingConfig.thinkingBudget: 0과 같은 목적으로 'low'로 낮추고, 그래도
+// 남는 추론 오버헤드에 대비해 예산 자체도 여유 있게 잡는다 — 응답이 잘려
+// 빈 문자열이 되면 폴백이 필요할 때 오히려 실패하게 된다.
+const MAX_OUTPUT_TOKENS = 1500;
 
 const getClient = (): Groq => {
   const apiKey = process.env.GROQ_API_KEY;
@@ -24,6 +36,7 @@ export const analyzeWithGroq = async (input: AnalysisInput): Promise<AnalysisRes
   const response = await groq.chat.completions.create({
     model: MODEL_NAME,
     max_completion_tokens: MAX_OUTPUT_TOKENS,
+    reasoning_effort: 'low',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: buildUserContent(input) },
@@ -39,11 +52,11 @@ export const analyzeWithGroq = async (input: AnalysisInput): Promise<AnalysisRes
             verdict: {
               type: 'string',
               enum: ['안전', '의심', '위험'],
-              description: '판정 결과. riskScore와 반드시 일치해야 함 (0-30=안전, 31-70=의심, 71-100=위험).',
+              description: `판정 결과. riskScore와 반드시 일치해야 함 (${VERDICT_BAND_TEXT}).`,
             },
             riskScore: {
               type: 'integer',
-              description: '0에서 100 사이의 정수 위험도 점수 (예: 85). 0에서 1 사이의 비율이 아님.',
+              description: RISK_SCORE_FIELD_DESCRIPTION,
             },
             redFlags: {
               type: 'array',
