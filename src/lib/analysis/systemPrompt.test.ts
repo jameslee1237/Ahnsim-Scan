@@ -57,9 +57,16 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('모순');
   });
 
-  it('instructs the model not to score threatening keywords as high risk without actual phishing mechanics', () => {
-    expect(SYSTEM_PROMPT).toContain('위협적이거나 자극적인 단어');
+  it('instructs the model not to score isolated surface signals as high risk without actual phishing mechanics', () => {
+    expect(SYSTEM_PROMPT).toContain('표면적인 개별 신호 하나');
+    expect(SYSTEM_PROMPT).toContain('위협적');
     expect(SYSTEM_PROMPT).toContain('피싱 공격 수단');
+  });
+
+  it('instructs the model not to treat a link\'s mere presence, or free hosting domains, as inherently suspicious', () => {
+    expect(SYSTEM_PROMPT).toContain('링크가 포함되어 있다는 사실 자체는 위험 신호가 아닙니다');
+    expect(SYSTEM_PROMPT).toContain('vercel.app');
+    expect(SYSTEM_PROMPT).toContain('netlify.app');
   });
 
   it('instructs the model to look for domain impersonation patterns, not just name/domain mismatch', () => {
