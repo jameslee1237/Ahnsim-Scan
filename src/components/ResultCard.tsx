@@ -1,4 +1,5 @@
 import { ShieldAlert, ShieldCheck, ShieldQuestion, TriangleAlert } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +18,7 @@ interface IResultCardProps {
 // 이 커스터마이징은 사라지지 않는다.
 const VERDICT_STYLE: Record<
   AnalysisResult['verdict'],
-  { icon: typeof ShieldCheck; badgeClassName: string; progressClassName: string }
+  { icon: LucideIcon; badgeClassName: string; progressClassName: string }
 > = {
   안전: {
     icon: ShieldCheck,
@@ -50,7 +51,9 @@ export const ResultCard = ({ result, onClear }: IResultCardProps) => {
       <CardContent className="space-y-4">
         <div className="flex items-center gap-3">
           <Badge className={badgeClassName}>{result.verdict}</Badge>
-          <span className="text-sm text-muted-foreground">위험도 {result.riskScore} / 100</span>
+          <span className="text-sm text-muted-foreground">
+            위험도 {Math.round(result.riskScore)} / 100
+          </span>
         </div>
 
         <Progress value={result.riskScore} aria-label="위험도" className={progressClassName} />
