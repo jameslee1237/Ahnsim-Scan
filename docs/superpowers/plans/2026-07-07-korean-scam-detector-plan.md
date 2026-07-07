@@ -958,14 +958,35 @@ describe('verifyTurnstileToken', () => {
     expect(result).toBe(false);
   });
 
-  it('returns false when the Cloudflare request itself fails', async () => {
+  it('returns false when Cloudflare responds with a non-ok HTTP status', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
+
+    const result = await verifyTurnstileToken('some-token');
+    expect(result).toBe(false);
+  });
+
+  it('returns false when fetch itself rejects (network failure)', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('network error')) as unknown as typeof fetch;
+
+    const result = await verifyTurnstileToken('some-token');
+    expect(result).toBe(false);
+  });
+
+  it('returns false when the response body is not valid JSON', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('Unexpected token');
+      },
+    }) as unknown as typeof fetch;
 
     const result = await verifyTurnstileToken('some-token');
     expect(result).toBe(false);
   });
 });
 ```
+
+Note (post-review): the original test only covered an HTTP-level failure (`ok: false`), never a genuine `fetch()` rejection (network/DNS/timeout) or a malformed JSON body from `res.json()`. Neither is caught by the `!res.ok` check, so both would have propagated as an unhandled rejection — violating this function's "always resolves to a boolean, never throws" contract. Two tests were added for these cases; the implementation below now wraps the fetch + JSON parse in a try/catch to match.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -995,18 +1016,28 @@ export const verifyTurnstileToken = async (
     body.append('remoteip', remoteIp);
   }
 
-  const res = await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', body });
-  if (!res.ok) return false;
+  try {
+    const res = await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', body });
+    if (!res.ok) return false;
 
-  const data = (await res.json()) as { success: boolean };
-  return data.success === true;
+    const data = (await res.json()) as { success: boolean };
+    return data.success === true;
+  } catch {
+    // fetch() itself can reject (network failure, DNS, timeout), and
+    // res.json() can throw on a malformed body — neither is an HTTP-level
+    // "ok: false" response, so they aren't caught by the check above. This
+    // function's contract is "always resolves to a boolean, never throws",
+    // so both failure modes fail closed the same way an explicit rejection
+    // from Cloudflare would.
+    return false;
+  }
 };
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/lib/security/turnstile.test.ts`
-Expected: PASS (4 tests)
+Expected: PASS (6 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1203,9 +1234,11 @@ export const POST = async (req: NextRequest) => {
     // checkIpRateLimit/checkGlobalQuota hit Upstash over the network — a
     // transient failure there (timeout, outage) would otherwise propagate as
     // an unhandled rejection and surface Next.js's generic error page instead
-    // of this app's sanitized Korean messaging. verifyTurnstileToken doesn't
-    // throw (it returns false on any fetch failure), but it's harmless to
-    // have it covered by the same catch.
+    // of this app's sanitized Korean messaging. verifyTurnstileToken is
+    // guaranteed not to throw either (it catches its own fetch/JSON errors
+    // internally and resolves to false), so this catch is really only for
+    // the Redis-backed checks — but there's no harm in it also covering
+    // verifyTurnstileToken, in case that guarantee ever changes.
     return NextResponse.json(
       { error: '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' },
       { status: 503 },
