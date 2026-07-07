@@ -16,9 +16,19 @@ export const verifyTurnstileToken = async (
     body.append('remoteip', remoteIp);
   }
 
-  const res = await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', body });
-  if (!res.ok) return false;
+  try {
+    const res = await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', body });
+    if (!res.ok) return false;
 
-  const data = (await res.json()) as { success: boolean };
-  return data.success === true;
+    const data = (await res.json()) as { success: boolean };
+    return data.success === true;
+  } catch {
+    // fetch() itself can reject (network failure, DNS, timeout), and
+    // res.json() can throw on a malformed body — neither is an HTTP-level
+    // "ok: false" response, so they aren't caught by the check above. This
+    // function's contract is "always resolves to a boolean, never throws",
+    // so both failure modes fail closed the same way an explicit rejection
+    // from Cloudflare would.
+    return false;
+  }
 };

@@ -33,8 +33,27 @@ describe('verifyTurnstileToken', () => {
     expect(result).toBe(false);
   });
 
-  it('returns false when the Cloudflare request itself fails', async () => {
+  it('returns false when Cloudflare responds with a non-ok HTTP status', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
+
+    const result = await verifyTurnstileToken('some-token');
+    expect(result).toBe(false);
+  });
+
+  it('returns false when fetch itself rejects (network failure)', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('network error')) as unknown as typeof fetch;
+
+    const result = await verifyTurnstileToken('some-token');
+    expect(result).toBe(false);
+  });
+
+  it('returns false when the response body is not valid JSON', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('Unexpected token');
+      },
+    }) as unknown as typeof fetch;
 
     const result = await verifyTurnstileToken('some-token');
     expect(result).toBe(false);
