@@ -56,4 +56,10 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('71-100 위험');
     expect(SYSTEM_PROMPT).toContain('모순');
   });
+
+  it('instructs the model to look for domain impersonation patterns, not just name/domain mismatch', () => {
+    expect(SYSTEM_PROMPT).toContain('오타 도메인');
+    expect(SYSTEM_PROMPT).toContain('TLD');
+    expect(SYSTEM_PROMPT).toContain('유니코드');
+  });
 });
