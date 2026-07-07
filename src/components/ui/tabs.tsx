@@ -24,7 +24,13 @@ function Tabs({
 }
 
 const tabsListVariants = cva(
-  "group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
+  // TabsTrigger의 실제 높이는 이 컨테이너의 content-box에서 padding(3px*2)과
+  // calc(100%-1px) 만큼을 뺀 값이 된다. 트리거 자체가 44px(모바일 터치
+  // 타겟 최소 권장치)이 되려면 컨테이너는 44 + 6(padding) + 1(calc 보정) =
+  // 51px 이상이어야 하므로, 여유를 두고 52px(h-13, Tailwind v4의
+  // --spacing 기반 동적 스케일)로 지정한다. h-11(44px)만 주면 트리거는
+  // 37px에 그친다.
+  "group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-13 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
   {
     variants: {
       variant: {

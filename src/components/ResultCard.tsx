@@ -68,7 +68,11 @@ export const ResultCard = ({ result, onClear }: IResultCardProps) => {
               {result.redFlags.map((flag, index) => (
                 <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
                   <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-500" aria-hidden="true" />
-                  {flag}
+                  {/* flex 아이템은 기본적으로 min-width: auto라 내용 너비만큼
+                      줄어들기를 거부할 수 있다. min-w-0으로 좁은 화면에서도
+                      줄바꿈되도록 강제한다(Card에 overflow-hidden이 있어,
+                      그러지 않으면 긴 텍스트가 잘릴 수 있다). */}
+                  <span className="min-w-0">{flag}</span>
                 </li>
               ))}
             </ul>
