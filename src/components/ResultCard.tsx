@@ -2,7 +2,7 @@ import { ShieldAlert, ShieldCheck, ShieldQuestion, TriangleAlert } from 'lucide-
 import type { LucideIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import type { AnalysisResult } from '@/lib/analysis/types';
@@ -41,12 +41,15 @@ export const ResultCard = ({ result, onClear }: IResultCardProps) => {
   const { icon: VerdictIcon, badgeClassName, progressClassName } = VERDICT_STYLE[result.verdict];
 
   return (
-    <Card className="mt-6">
+    <Card className="mt-6 animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
+        {/* CardTitle은 <div>로 렌더링되어 헤딩 트리에 잡히지 않으므로(shadcn
+            공용 컴포넌트라 여기서만 바꾸지 않는다), 실제 <h2>를 직접 써서
+            페이지의 h1 아래 헤딩 계층을 올바르게 유지한다. */}
+        <h2 className="flex items-center gap-2 text-lg leading-snug font-medium">
           <VerdictIcon className="size-5" aria-hidden="true" />
           분석 결과
-        </CardTitle>
+        </h2>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-3">
