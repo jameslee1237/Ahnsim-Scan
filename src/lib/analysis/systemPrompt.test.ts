@@ -56,4 +56,24 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('71-100 위험');
     expect(SYSTEM_PROMPT).toContain('모순');
   });
+
+  it('instructs the model to look for domain impersonation patterns, not just name/domain mismatch', () => {
+    expect(SYSTEM_PROMPT).toContain('오타 도메인');
+    expect(SYSTEM_PROMPT).toContain('TLD');
+    expect(SYSTEM_PROMPT).toContain('유니코드');
+    expect(SYSTEM_PROMPT).toContain('무료 이메일');
+  });
+
+  it('instructs the model to treat login/credential-entry links as a strong red flag', () => {
+    expect(SYSTEM_PROMPT).toContain('로그인하거나 정보를 입력하도록 유도');
+    expect(SYSTEM_PROMPT).toContain('가짜 페이지');
+  });
+
+  it('instructs the model to check a link\'s own domain for the same spoofing patterns', () => {
+    expect(SYSTEM_PROMPT).toContain('링크의 도메인 자체에도');
+  });
+
+  it('includes password among the personal information a scam message might request', () => {
+    expect(SYSTEM_PROMPT).toContain('비밀번호');
+  });
 });
