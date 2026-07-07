@@ -1023,6 +1023,8 @@ git commit -m "feat: add Turnstile server-side verification"
 - Create: `src/app/api/analyze/route.ts`
 - Test: `src/app/api/analyze/route.test.ts`
 
+Note (carried forward from Task 7's code review): a reviewer suggested running `checkIpRateLimit` and `checkGlobalQuota` concurrently via `Promise.all` instead of sequentially, to trim one round trip off the hot path. **Deliberately not applied** — the sequential order is load-bearing, not an oversight: `checkGlobalQuota()` only runs (and only increments the shared global counter) for requests that already passed the per-IP check. Parallelizing would mean a request rejected for exceeding its own IP's rate limit *still* burns a unit of the shared global quota — exactly the kind of consumption Task 7 exists to protect against. Keep these two checks sequential, in this order, with the early return in between.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `src/app/api/analyze/route.test.ts`:
@@ -1120,6 +1122,16 @@ describe('POST /api/analyze', () => {
     const data = await res.json();
     expect(data.error).not.toContain('prompt details');
   });
+
+  it('returns 503 without leaking error details when checkGlobalQuota throws', async () => {
+    vi.mocked(checkGlobalQuota).mockRejectedValue(
+      new Error('upstash connection timed out at 10.0.0.5'),
+    );
+    const res = await POST(makeRequest(validSmsPayload));
+    expect(res.status).toBe(503);
+    const data = await res.json();
+    expect(data.error).not.toContain('10.0.0.5');
+  });
 });
 ```
 
@@ -1166,25 +1178,38 @@ export const POST = async (req: NextRequest) => {
   const { turnstileToken, ...rest } = body as Record<string, unknown>;
   const ip = getClientIp(req);
 
-  if (typeof turnstileToken !== 'string' || !(await verifyTurnstileToken(turnstileToken, ip))) {
-    return NextResponse.json({ error: '봇 확인에 실패했습니다.' }, { status: 403 });
-  }
+  try {
+    if (typeof turnstileToken !== 'string' || !(await verifyTurnstileToken(turnstileToken, ip))) {
+      return NextResponse.json({ error: '봇 확인에 실패했습니다.' }, { status: 403 });
+    }
 
-  const rateLimitResult = await checkIpRateLimit(ip);
-  if (!rateLimitResult.allowed) {
+    const rateLimitResult = await checkIpRateLimit(ip);
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' },
+        { status: 429 },
+      );
+    }
+
+    const quotaResult = await checkGlobalQuota();
+    if (!quotaResult.allowed) {
+      const message =
+        quotaResult.reason === 'daily'
+          ? '오늘의 무료 사용량을 모두 사용했습니다. 내일 다시 시도해주세요.'
+          : '일시적으로 요청이 많습니다. 잠시 후 다시 시도해주세요.';
+      return NextResponse.json({ error: message }, { status: 429 });
+    }
+  } catch {
+    // checkIpRateLimit/checkGlobalQuota hit Upstash over the network — a
+    // transient failure there (timeout, outage) would otherwise propagate as
+    // an unhandled rejection and surface Next.js's generic error page instead
+    // of this app's sanitized Korean messaging. verifyTurnstileToken doesn't
+    // throw (it returns false on any fetch failure), but it's harmless to
+    // have it covered by the same catch.
     return NextResponse.json(
-      { error: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' },
-      { status: 429 },
+      { error: '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' },
+      { status: 503 },
     );
-  }
-
-  const quotaResult = await checkGlobalQuota();
-  if (!quotaResult.allowed) {
-    const message =
-      quotaResult.reason === 'daily'
-        ? '오늘의 무료 사용량을 모두 사용했습니다. 내일 다시 시도해주세요.'
-        : '일시적으로 요청이 많습니다. 잠시 후 다시 시도해주세요.';
-    return NextResponse.json({ error: message }, { status: 429 });
   }
 
   const parsedInput = AnalysisInputSchema.safeParse(rest);
@@ -1210,7 +1235,7 @@ export const POST = async (req: NextRequest) => {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/app/api/analyze/route.test.ts`
-Expected: PASS (6 tests)
+Expected: PASS (7 tests)
 
 - [ ] **Step 5: Run the full test suite**
 
