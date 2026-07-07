@@ -41,7 +41,7 @@ export const ResultCard = ({ result, onClear }: IResultCardProps) => {
   const { icon: VerdictIcon, badgeClassName, progressClassName } = VERDICT_STYLE[result.verdict];
 
   return (
-    <Card className="mt-6">
+    <Card className="mt-6 animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
       <CardHeader>
         {/* CardTitle은 <div>로 렌더링되어 헤딩 트리에 잡히지 않으므로(shadcn
             공용 컴포넌트라 여기서만 바꾸지 않는다), 실제 <h2>를 직접 써서

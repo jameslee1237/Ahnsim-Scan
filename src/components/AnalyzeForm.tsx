@@ -3,6 +3,13 @@
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import Script from 'next/script';
+import { Loader2, TriangleAlert } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { MAX_INPUT_LENGTH, type AnalysisResult } from '@/lib/analysis/types';
 
 type MessageType = 'sms' | 'email';
@@ -22,9 +29,6 @@ declare global {
     };
   }
 }
-
-const inputClass =
-  'w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none';
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '';
 
@@ -113,127 +117,119 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
     setError('');
   };
 
+  const remaining = MAX_INPUT_LENGTH - text.length;
+  const counterClassName =
+    remaining <= 0
+      ? 'text-destructive'
+      : remaining <= MAX_INPUT_LENGTH * 0.1
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-muted-foreground';
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <Script
-        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-        onLoad={renderTurnstile}
-        onError={() => setScriptLoadError(true)}
-      />
+    <Card>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <Script
+            src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+            onLoad={renderTurnstile}
+            onError={() => setScriptLoadError(true)}
+          />
 
-      <div className="flex gap-4">
-        <label className="flex items-center gap-1">
-          <input
-            type="radio"
-            name="messageType"
-            checked={messageType === 'sms'}
-            onChange={() => setMessageType('sms')}
-          />
-          문자(SMS)
-        </label>
-        <label className="flex items-center gap-1">
-          <input
-            type="radio"
-            name="messageType"
-            checked={messageType === 'email'}
-            onChange={() => setMessageType('email')}
-          />
-          이메일
-        </label>
-      </div>
+          <Tabs value={messageType} onValueChange={(value) => setMessageType(value as MessageType)}>
+            <TabsList className="w-full">
+              <TabsTrigger value="sms" className="flex-1">
+                문자(SMS)
+              </TabsTrigger>
+              <TabsTrigger value="email" className="flex-1">
+                이메일
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-      {messageType === 'sms' ? (
-        <div>
-          <label htmlFor="senderNumber" className="sr-only">
-            발신번호
-          </label>
-          <input
-            id="senderNumber"
-            type="text"
-            placeholder="발신번호"
-            value={senderNumber}
-            onChange={(e) => setSenderNumber(e.target.value)}
-            className={inputClass}
-          />
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <div>
-            <label htmlFor="senderAddress" className="sr-only">
-              발신 주소
-            </label>
-            <input
-              id="senderAddress"
-              type="text"
-              placeholder="발신 주소"
-              value={senderAddress}
-              onChange={(e) => setSenderAddress(e.target.value)}
-              className={inputClass}
+          {messageType === 'sms' ? (
+            <div key="sms" className="animate-in fade-in-0 slide-in-from-top-1 space-y-1.5 duration-200">
+              <Label htmlFor="senderNumber">발신번호</Label>
+              <Input
+                id="senderNumber"
+                type="text"
+                placeholder="예: 010-1234-5678"
+                value={senderNumber}
+                onChange={(e) => setSenderNumber(e.target.value)}
+              />
+            </div>
+          ) : (
+            <div key="email" className="animate-in fade-in-0 slide-in-from-top-1 space-y-4 duration-200">
+              <div className="space-y-1.5">
+                <Label htmlFor="senderAddress">발신 주소</Label>
+                <Input
+                  id="senderAddress"
+                  type="text"
+                  placeholder="예: notice@example.com"
+                  value={senderAddress}
+                  onChange={(e) => setSenderAddress(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="subject">제목</Label>
+                <Input
+                  id="subject"
+                  type="text"
+                  placeholder="이메일 제목"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="messageBody">문자/이메일 본문</Label>
+            <Textarea
+              id="messageBody"
+              value={text}
+              maxLength={MAX_INPUT_LENGTH}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="받은 문자나 이메일 내용을 그대로 붙여넣으세요"
+              className="h-32 resize-none"
             />
+            <div className={`text-right text-xs transition-colors ${counterClassName}`}>
+              {text.length} / {MAX_INPUT_LENGTH}
+            </div>
           </div>
-          <div>
-            <label htmlFor="subject" className="sr-only">
-              제목
-            </label>
-            <input
-              id="subject"
-              type="text"
-              placeholder="제목"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className={inputClass}
-            />
+
+          <div ref={widgetRef} className="flex justify-center" />
+
+          {scriptLoadError && (
+            <p
+              role="alert"
+              className="flex items-center gap-1.5 text-sm text-destructive animate-in fade-in-0"
+            >
+              <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
+              보안 위젯을 불러오지 못했습니다. 광고 차단 확장 프로그램을 확인해주세요.
+            </p>
+          )}
+
+          {error && (
+            <p
+              role="alert"
+              className="flex items-center gap-1.5 text-sm text-destructive animate-in fade-in-0"
+            >
+              <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
+              {error}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <Button type="submit" disabled={loading} className="flex-1">
+              {loading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+              {loading ? '분석 중...' : '분석하기'}
+            </Button>
+            <Button type="button" variant="outline" onClick={handleClear}>
+              지우기
+            </Button>
           </div>
-        </div>
-      )}
-
-      <div>
-        <label htmlFor="messageBody" className="sr-only">
-          문자/이메일 본문
-        </label>
-        <textarea
-          id="messageBody"
-          value={text}
-          maxLength={MAX_INPUT_LENGTH}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="문자/이메일 본문을 붙여넣으세요"
-          className={`${inputClass} h-32 resize-none`}
-        />
-        <div className="text-right text-sm text-gray-500">
-          {text.length} / {MAX_INPUT_LENGTH}
-        </div>
-      </div>
-
-      <div ref={widgetRef} />
-
-      {scriptLoadError && (
-        <p role="alert" className="text-sm text-red-600">
-          보안 위젯을 불러오지 못했습니다. 광고 차단 확장 프로그램을 확인해주세요.
-        </p>
-      )}
-
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
-
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
-        >
-          {loading ? '분석 중...' : '분석하기'}
-        </button>
-        <button
-          type="button"
-          onClick={handleClear}
-          className="rounded border border-gray-300 px-4 py-2"
-        >
-          지우기
-        </button>
-      </div>
-    </form>
+        </form>
+      </CardContent>
+    </Card>
   );
 };
