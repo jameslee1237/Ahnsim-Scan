@@ -43,9 +43,21 @@ describe('checkGlobalQuota', () => {
   });
 
   it('rejects when the per-minute limit is exceeded', async () => {
-    incrMock.mockResolvedValueOnce(5).mockResolvedValueOnce(13);
+    incrMock.mockResolvedValueOnce(5).mockResolvedValueOnce(9);
     const result = await checkGlobalQuota();
     expect(result.allowed).toBe(false);
     expect(result.reason).toBe('minute');
+  });
+
+  it('allows the request when exactly at the daily limit', async () => {
+    incrMock.mockResolvedValueOnce(1400).mockResolvedValueOnce(1);
+    const result = await checkGlobalQuota();
+    expect(result.allowed).toBe(true);
+  });
+
+  it('allows the request when exactly at the per-minute limit', async () => {
+    incrMock.mockResolvedValueOnce(1).mockResolvedValueOnce(8);
+    const result = await checkGlobalQuota();
+    expect(result.allowed).toBe(true);
   });
 });

@@ -13,12 +13,25 @@ const redis = new Redis({
   token: upstashToken,
 });
 
-// Kept below Gemini's actual free-tier ceiling as a safety margin — verify
-// against the current published free-tier limits for the chosen model and
-// tune these two constants before relying on them in production.
+// Kept below Gemini's actual free-tier ceiling as a safety margin. Public
+// reporting on gemini-2.5-flash's free tier converges around ~1,500
+// requests/day and somewhere in the 10-15 requests/minute range (sources
+// disagree within that band, and Google has lowered these limits over time
+// in the past) — DAILY_LIMIT is set comfortably under the daily figure;
+// MINUTE_LIMIT is set at the conservative end of the per-minute range so
+// this guard has a real chance of firing before Google's own 429, not after
+// it. Re-verify both against the current Google AI Studio console before
+// depending on them for real production traffic.
 const DAILY_LIMIT = 1400;
-const MINUTE_LIMIT = 12;
+const MINUTE_LIMIT = 8;
 
+// Boundaries use UTC, not the Pacific-time midnight some Google APIs reset
+// on — a deliberate simplification (no timezone/DST handling) since this is
+// a safety-margin backstop, not the actual enforcement (Google's own limit
+// is still authoritative regardless of how this guard's clock lines up with
+// theirs). Worst case of the mismatch is a few hours of being slightly more
+// or less conservative than Google's real reset, not a correctness or cost
+// problem.
 const todayKey = (): string => {
   const now = new Date();
   return `quota:daily:${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
