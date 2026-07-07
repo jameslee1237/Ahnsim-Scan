@@ -391,9 +391,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 const generateContentMock = vi.fn();
 
 vi.mock('@google/genai', () => ({
-  GoogleGenAI: vi.fn().mockImplementation(() => ({
-    models: { generateContent: generateContentMock },
-  })),
+  // Must be a `function`, not an arrow function — arrow functions are never
+  // constructible in JS, and this mock is invoked with `new GoogleGenAI(...)`.
+  GoogleGenAI: vi.fn().mockImplementation(function () {
+    return { models: { generateContent: generateContentMock } };
+  }),
   Type: { OBJECT: 'OBJECT', STRING: 'STRING', NUMBER: 'NUMBER', ARRAY: 'ARRAY' },
 }));
 
@@ -438,6 +440,14 @@ describe('analyzeWithGemini', () => {
     generateContentMock.mockResolvedValue({
       text: JSON.stringify({ verdict: '알수없음', riskScore: 5, redFlags: [], explanation: '', recommendedAction: '' }),
     });
+
+    await expect(
+      analyzeWithGemini({ type: 'sms', senderNumber: '010', messageBody: '테스트 메시지입니다' }),
+    ).rejects.toThrow();
+  });
+
+  it('throws when the model response is malformed JSON', async () => {
+    generateContentMock.mockResolvedValue({ text: '{"verdict": "위험", "riskSc' });
 
     await expect(
       analyzeWithGemini({ type: 'sms', senderNumber: '010', messageBody: '테스트 메시지입니다' }),
@@ -494,6 +504,10 @@ export const analyzeWithGemini = async (input: AnalysisInput): Promise<AnalysisR
       systemInstruction: SYSTEM_PROMPT,
       responseMimeType: 'application/json',
       maxOutputTokens: MAX_OUTPUT_TOKENS,
+      // Fixed-schema classification, no need for extended reasoning — and if
+      // thinking is left on, it competes with maxOutputTokens for the same
+      // budget and can truncate or empty out the visible response.
+      thinkingConfig: { thinkingBudget: 0 },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -538,7 +552,7 @@ export const analyzeWithGemini = async (input: AnalysisInput): Promise<AnalysisR
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/lib/analysis/geminiProvider.test.ts`
-Expected: PASS (4 tests)
+Expected: PASS (5 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -546,6 +560,8 @@ Expected: PASS (4 tests)
 git add src/lib/analysis/geminiProvider.ts src/lib/analysis/geminiProvider.test.ts
 git commit -m "feat: add Gemini provider with structured JSON output"
 ```
+
+Note (post-review): code quality review caught that `gemini-2.5-flash` has thinking enabled by default (`thinkingBudget: -1`, automatic, per the installed SDK's own `ThinkingConfig` type) — since this shares the same `maxOutputTokens` budget as the visible response, the model could spend the whole cap on internal reasoning and return a truncated/empty result, a real risk invisible to every test here because they all mock `response.text` directly and bypass real token accounting. Fixed by adding `thinkingConfig: { thinkingBudget: 0 }` (0 = disabled, confirmed via the SDK's own doc comment) — reasonable for a fixed-schema classification task that doesn't need extended reasoning. Also added a 5th test covering malformed/truncated JSON from Gemini, which locks in that this case fails safe (propagates to Task 9's route-handler catch) rather than being silently untested.
 
 ---
 
@@ -640,13 +656,19 @@ import { describe, expect, it, vi } from 'vitest';
 
 const limitMock = vi.fn();
 
+// Both mocks below use `function`, not arrow functions — arrow functions are
+// never constructible in JS, and rateLimit.ts invokes both with `new`.
 vi.mock('@upstash/redis', () => ({
-  Redis: vi.fn().mockImplementation(() => ({})),
+  Redis: vi.fn().mockImplementation(function () {
+    return {};
+  }),
 }));
 
 vi.mock('@upstash/ratelimit', () => ({
   Ratelimit: Object.assign(
-    vi.fn().mockImplementation(() => ({ limit: limitMock })),
+    vi.fn().mockImplementation(function () {
+      return { limit: limitMock };
+    }),
     { slidingWindow: vi.fn() },
   ),
 }));
@@ -733,8 +755,12 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 const incrMock = vi.fn();
 const expireMock = vi.fn();
 
+// `function`, not an arrow function — arrow functions are never constructible
+// in JS, and quotaGuard.ts invokes this with `new Redis(...)`.
 vi.mock('@upstash/redis', () => ({
-  Redis: vi.fn().mockImplementation(() => ({ incr: incrMock, expire: expireMock })),
+  Redis: vi.fn().mockImplementation(function () {
+    return { incr: incrMock, expire: expireMock };
+  }),
 }));
 
 import { checkGlobalQuota } from './quotaGuard';
