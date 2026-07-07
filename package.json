@@ -10,6 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "pretest": "node scripts/check-node.js",
+    "predev": "node scripts/check-node.js",
     "test": "vitest run"
   },
   "dependencies": {
