@@ -42,6 +42,17 @@ export const POST = async (req: NextRequest) => {
   }
 
   const { turnstileToken, ...rest } = body as Record<string, unknown>;
+
+  // 입력 스키마 검증을 봇 확인/rate limit/quota 체크보다 먼저 수행한다. 순서가
+  // 바뀌면(체크들이 먼저 실행되면) 형식이 잘못된 요청도 Turnstile 토큰 1회,
+  // IP rate limit 슬롯 1개, 전역 quota 카운트를 그대로 소모한 뒤에야 400으로
+  // 거부되어 — 정작 이 체크들이 보호하려는 공유 무료 할당량을 로컬 검증만으로
+  // 막을 수 있는 요청이 도리어 갉아먹게 된다.
+  const parsedInput = AnalysisInputSchema.safeParse(rest);
+  if (!parsedInput.success) {
+    return NextResponse.json({ error: '입력값이 올바르지 않습니다.' }, { status: 400 });
+  }
+
   const ip = getClientIp(req);
 
   try {
@@ -66,23 +77,16 @@ export const POST = async (req: NextRequest) => {
       return NextResponse.json({ error: message }, { status: 429 });
     }
   } catch {
-    // checkIpRateLimit/checkGlobalQuota hit Upstash over the network — a
-    // transient failure there (timeout, outage) would otherwise propagate as
-    // an unhandled rejection and surface Next.js's generic error page instead
-    // of this app's sanitized Korean messaging. verifyTurnstileToken is
-    // guaranteed not to throw either (it catches its own fetch/JSON errors
-    // internally and resolves to false), so this catch is really only for
-    // the Redis-backed checks — but there's no harm in it also covering
-    // verifyTurnstileToken, in case that guarantee ever changes.
+    // checkIpRateLimit/checkGlobalQuota hit Upstash over the network, and
+    // verifyTurnstileToken now throws if TURNSTILE_SECRET_KEY is missing —
+    // all three are config/infra failures, not the caller's fault, so they
+    // surface as this app's sanitized 503 rather than Next.js's generic
+    // error page or (worse, for the Turnstile case) a misleading 403 that
+    // blames the user for a server misconfiguration.
     return NextResponse.json(
       { error: '일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' },
       { status: 503 },
     );
-  }
-
-  const parsedInput = AnalysisInputSchema.safeParse(rest);
-  if (!parsedInput.success) {
-    return NextResponse.json({ error: '입력값이 올바르지 않습니다.' }, { status: 400 });
   }
 
   try {

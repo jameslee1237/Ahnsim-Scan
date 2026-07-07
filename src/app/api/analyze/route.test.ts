@@ -37,6 +37,9 @@ const validSmsPayload = {
 
 describe('POST /api/analyze', () => {
   beforeEach(() => {
+    // 이전 테스트의 호출 기록이 남아있으면 "호출되지 않아야 한다" 류의 단언이
+    // 오염되므로, 기본값을 다시 세팅하기 전에 먼저 초기화한다.
+    vi.clearAllMocks();
     vi.mocked(verifyTurnstileToken).mockResolvedValue(true);
     vi.mocked(checkIpRateLimit).mockResolvedValue({ allowed: true, remaining: 9, reset: 0 });
     vi.mocked(checkGlobalQuota).mockResolvedValue({ allowed: true });
@@ -62,9 +65,14 @@ describe('POST /api/analyze', () => {
     expect(data.error).toContain('오늘');
   });
 
-  it('returns 400 for an invalid input shape', async () => {
+  it('returns 400 for an invalid input shape without spending turnstile/rate-limit/quota checks', async () => {
+    // 입력 스키마 검증이 봇 확인/rate limit/quota 체크보다 먼저 실행되어야 한다.
+    // 순서가 바뀌면 형식이 잘못된 요청도 이 세 체크를 전부 소모하게 된다.
     const res = await POST(makeRequest({ type: 'sms', turnstileToken: 'ok' }));
     expect(res.status).toBe(400);
+    expect(verifyTurnstileToken).not.toHaveBeenCalled();
+    expect(checkIpRateLimit).not.toHaveBeenCalled();
+    expect(checkGlobalQuota).not.toHaveBeenCalled();
   });
 
   it('returns 400 for a malformed (non-JSON) request body', async () => {
@@ -86,7 +94,6 @@ describe('POST /api/analyze', () => {
   });
 
   it('returns 403 without calling verifyTurnstileToken when turnstileToken is missing', async () => {
-    vi.mocked(verifyTurnstileToken).mockClear();
     const { type, senderNumber, messageBody } = validSmsPayload;
     const res = await POST(makeRequest({ type, senderNumber, messageBody }));
     expect(res.status).toBe(403);
@@ -115,6 +122,18 @@ describe('POST /api/analyze', () => {
     expect(res.status).toBe(500);
     const data = await res.json();
     expect(data.error).not.toContain('prompt details');
+  });
+
+  it('returns 503 without leaking error details when verifyTurnstileToken throws', async () => {
+    // TURNSTILE_SECRET_KEY 누락 시 verifyTurnstileToken이 던지는 경우로,
+    // 사용자를 봇으로 오인하는 403 대신 서버 설정 오류로 처리되어야 한다.
+    vi.mocked(verifyTurnstileToken).mockRejectedValue(
+      new Error('TURNSTILE_SECRET_KEY is not set'),
+    );
+    const res = await POST(makeRequest(validSmsPayload));
+    expect(res.status).toBe(503);
+    const data = await res.json();
+    expect(data.error).not.toContain('TURNSTILE_SECRET_KEY');
   });
 
   it('returns 503 without leaking error details when checkGlobalQuota throws', async () => {
