@@ -56,4 +56,4 @@ Vitest, TDD (write the failing test first). Tests live next to source as `*.test
 
 **Ask first:**
 - Before adding a new npm dependency
-- Before changing a rate-limit or quota threshold value
+- Before changing a rate-limit or quota threshold value in a commit meant to ship (temporary local edits for manual testing, e.g. the plan's Task 15 verification steps, are fine without asking)
