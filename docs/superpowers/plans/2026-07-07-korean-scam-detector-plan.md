@@ -1130,6 +1130,32 @@ describe('POST /api/analyze', () => {
     expect(res.status).toBe(400);
   });
 
+  it('returns 400 for a malformed (non-JSON) request body', async () => {
+    const req = new NextRequest('http://localhost/api/analyze', {
+      method: 'POST',
+      body: 'not valid json{{{',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '1.2.3.4' },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for a JSON body of null instead of an object', async () => {
+    // `null` parses successfully (it's valid JSON), unlike the malformed-body
+    // case above, but isn't an object - this exercises the separate guard
+    // for a body that parses fine but isn't destructurable.
+    const res = await POST(makeRequest(null));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 403 without calling verifyTurnstileToken when turnstileToken is missing', async () => {
+    vi.mocked(verifyTurnstileToken).mockClear();
+    const { type, senderNumber, messageBody } = validSmsPayload;
+    const res = await POST(makeRequest({ type, senderNumber, messageBody }));
+    expect(res.status).toBe(403);
+    expect(verifyTurnstileToken).not.toHaveBeenCalled();
+  });
+
   it('returns the analysis result on success', async () => {
     vi.mocked(analyzeMessage).mockResolvedValue({
       verdict: '위험',
@@ -1163,8 +1189,19 @@ describe('POST /api/analyze', () => {
     const data = await res.json();
     expect(data.error).not.toContain('10.0.0.5');
   });
+
+  it('returns 500 instead of forwarding a malformed analyzeMessage result', async () => {
+    // @ts-expect-error intentionally malformed to exercise the route's own
+    // AnalysisResultSchema re-validation, independent of geminiProvider.ts's
+    // own validation.
+    vi.mocked(analyzeMessage).mockResolvedValue({ verdict: '알수없음', riskScore: 5 });
+    const res = await POST(makeRequest(validSmsPayload));
+    expect(res.status).toBe(500);
+  });
 });
 ```
+
+Note (post-review): code review of this task (the app's actual HTTP attack surface) found and fixed a real, reproduced bug — a JSON body of `null` parses successfully but crashes on destructuring (`Cannot destructure property 'turnstileToken' of 'null' as it is null`), uncaught, breaking the route's core guarantee that every failure path returns a sanitized error. Also added: response-boundary re-validation via `AnalysisResultSchema.parse()` (defense-in-depth against a future provider swap that might forget to self-validate, per `provider.ts`'s explicit swappable-boundary design), a documented trust assumption on the `x-forwarded-for`/`x-real-ip` headers (safe on Vercel's edge for direct deployments only), and tests for the malformed-body, null-body, missing-turnstileToken-short-circuit, and malformed-response cases. Test count grew from 7 to 11.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1177,7 +1214,7 @@ Create `src/app/api/analyze/route.ts`:
 
 ```ts
 import { NextRequest, NextResponse } from 'next/server';
-import { AnalysisInputSchema } from '@/lib/analysis/types';
+import { AnalysisInputSchema, AnalysisResultSchema } from '@/lib/analysis/types';
 import { analyzeMessage } from '@/lib/analysis/provider';
 import { checkIpRateLimit } from '@/lib/security/rateLimit';
 import { checkGlobalQuota } from '@/lib/security/quotaGuard';
@@ -1191,6 +1228,11 @@ const getClientIp = (req: NextRequest): string => {
   // Vercel sets x-real-ip on some routing paths where x-forwarded-for is
   // absent (e.g. certain edge/proxy configurations) — check it as a fallback
   // before giving up and grouping the request under the shared 'unknown' key.
+  // Trust assumption: both headers are client-controllable in general, and
+  // are only safe to read here because Vercel overwrites/sanitizes them at
+  // its edge for direct deployments. If a third-party reverse proxy or CDN
+  // is ever placed in front of this app, that assumption no longer holds and
+  // these headers would need to be re-validated or ignored.
   const realIp = req.headers.get('x-real-ip');
   if (realIp) {
     return realIp.trim();
@@ -1203,6 +1245,14 @@ export const POST = async (req: NextRequest) => {
   try {
     body = await req.json();
   } catch {
+    return NextResponse.json({ error: '잘못된 요청입니다.' }, { status: 400 });
+  }
+
+  // A JSON body of `null` (or any non-object top-level value) parses
+  // successfully — it's not a JSON syntax error, so the try/catch above
+  // doesn't catch it — but destructuring `null` throws a TypeError. Guard
+  // explicitly rather than let that propagate as an unhandled exception.
+  if (body === null || typeof body !== 'object') {
     return NextResponse.json({ error: '잘못된 요청입니다.' }, { status: 400 });
   }
 
@@ -1252,7 +1302,15 @@ export const POST = async (req: NextRequest) => {
 
   try {
     const result = await analyzeMessage(parsedInput.data);
-    return NextResponse.json(result);
+    // geminiProvider.ts already schema-validates its raw model output before
+    // returning, so this is redundant today — but analyzeMessage() is a
+    // swappable boundary (see provider.ts), and a future provider that
+    // forgets to validate its own output would otherwise have nothing
+    // stopping it from reaching the client. Re-validate at the response
+    // boundary itself so that guarantee doesn't depend on every current and
+    // future provider implementation remembering to uphold it.
+    const validatedResult = AnalysisResultSchema.parse(result);
+    return NextResponse.json(validatedResult);
   } catch {
     // Deliberately no console.error(err) with the caught error object here —
     // it may carry request/prompt content via the SDK's error payload. Log a
@@ -1268,7 +1326,7 @@ export const POST = async (req: NextRequest) => {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/app/api/analyze/route.test.ts`
-Expected: PASS (7 tests)
+Expected: PASS (11 tests)
 
 - [ ] **Step 5: Run the full test suite**
 
