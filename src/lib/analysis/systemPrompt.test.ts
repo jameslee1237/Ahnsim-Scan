@@ -69,6 +69,11 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('netlify.app');
   });
 
+  it('instructs the model not to guess at credential-harvesting intent without explicit textual evidence', () => {
+    expect(SYSTEM_PROMPT).toContain('가능성을 배제할 수 없다');
+    expect(SYSTEM_PROMPT).toContain('근거 없는 가능성이 아니라');
+  });
+
   it('instructs the model to look for domain impersonation patterns, not just name/domain mismatch', () => {
     expect(SYSTEM_PROMPT).toContain('오타 도메인');
     expect(SYSTEM_PROMPT).toContain('TLD');

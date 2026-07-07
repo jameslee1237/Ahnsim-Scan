@@ -3,9 +3,12 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { AnalysisResultSchema, type AnalysisInput, type AnalysisResult } from './types';
 import { SYSTEM_PROMPT, buildUserContent } from './systemPrompt';
 
-// gemini-2.5-flash-lite is also an option if the free-tier quota on flash
-// becomes a bottleneck — same responseSchema contract applies to both.
-const MODEL_NAME = 'gemini-2.5-flash';
+// flash-lite documents a materially larger free-tier daily quota than flash
+// (and this project's actual observed flash quota — 20 req/day on this
+// project — was far below either model's documented figures, worth
+// re-checking against the Google AI Studio console). Same responseSchema
+// contract applies to both, so this is a same-behavior swap.
+const MODEL_NAME = 'gemini-2.5-flash-lite';
 const MAX_OUTPUT_TOKENS = 800;
 
 const getClient = (): GoogleGenAI => {
