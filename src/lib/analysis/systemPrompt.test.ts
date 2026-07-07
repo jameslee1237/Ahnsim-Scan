@@ -61,5 +61,6 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('오타 도메인');
     expect(SYSTEM_PROMPT).toContain('TLD');
     expect(SYSTEM_PROMPT).toContain('유니코드');
+    expect(SYSTEM_PROMPT).toContain('무료 이메일');
   });
 });
