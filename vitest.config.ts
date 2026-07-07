@@ -13,6 +13,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // 'server-only'는 Next.js 번들러가 'react-server' export 조건으로 해석할 때만
+      // 빈 모듈이 되고, 그 외(Vitest의 Node 환경 포함)에서는 항상 에러를 throw하도록
+      // 만들어진 마커 패키지다. 서버 전용 모듈을 테스트에서도 import할 수 있도록
+      // 빈 구현(empty.js)으로 명시적으로 대체한다.
+      'server-only': path.resolve(__dirname, 'node_modules/server-only/empty.js'),
     },
   },
 });
