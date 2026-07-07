@@ -8,7 +8,7 @@ vi.mock('@google/genai', () => ({
   GoogleGenAI: vi.fn().mockImplementation(function () {
     return { models: { generateContent: generateContentMock } };
   }),
-  Type: { OBJECT: 'OBJECT', STRING: 'STRING', NUMBER: 'NUMBER', ARRAY: 'ARRAY' },
+  Type: { OBJECT: 'OBJECT', STRING: 'STRING', NUMBER: 'NUMBER', INTEGER: 'INTEGER', ARRAY: 'ARRAY' },
 }));
 
 import { analyzeWithGemini } from './geminiProvider';

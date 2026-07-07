@@ -41,8 +41,8 @@ export const analyzeWithGemini = async (input: AnalysisInput): Promise<AnalysisR
             description: '판정 결과. riskScore와 반드시 일치해야 함 (0-30=안전, 31-70=의심, 71-100=위험).',
           },
           riskScore: {
-            type: Type.NUMBER,
-            description: '0에서 100 사이의 위험도 점수.',
+            type: Type.INTEGER,
+            description: '0에서 100 사이의 정수 위험도 점수 (예: 85). 0에서 1 사이의 비율이 아님.',
           },
           redFlags: {
             type: Type.ARRAY,

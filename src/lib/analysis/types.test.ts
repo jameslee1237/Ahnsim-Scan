@@ -61,4 +61,28 @@ describe('AnalysisResultSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('rejects a non-integer riskScore (e.g. a 0-1 ratio instead of 0-100)', () => {
+    // 실제로 Groq gpt-oss-20b가 verdict "위험"에 riskScore 0.92를 반환한
+    // 사례가 있었다 — min(0)/max(100) 범위 검사만으로는 걸리지 않는다.
+    const result = AnalysisResultSchema.safeParse({
+      verdict: '위험',
+      riskScore: 0.92,
+      redFlags: [],
+      explanation: '설명',
+      recommendedAction: '조치',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a riskScore that does not match its verdict\'s documented band', () => {
+    const result = AnalysisResultSchema.safeParse({
+      verdict: '위험',
+      riskScore: 20,
+      redFlags: [],
+      explanation: '설명',
+      recommendedAction: '조치',
+    });
+    expect(result.success).toBe(false);
+  });
 });
