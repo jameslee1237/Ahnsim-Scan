@@ -1748,6 +1748,7 @@ Replace the contents of `src/app/layout.tsx` (note the `./globals.css` import �
 
 ```tsx
 import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -1755,7 +1756,7 @@ export const metadata: Metadata = {
   description: '문자와 이메일이 사기인지 AI로 확인하세요.',
 };
 
-const RootLayout = ({ children }: { children: React.ReactNode }) => {
+const RootLayout = ({ children }: { children: ReactNode }) => {
   return (
     <html lang="ko">
       <body>{children}</body>
@@ -1768,7 +1769,7 @@ export default RootLayout;
 
 - [ ] **Step 3: Run the dev server and smoke-test manually**
 
-Run: `npm run dev`
+Run: `pnpm dev`
 Open `http://localhost:3000`, confirm the page renders in Korean with the form and privacy notice visible. (Full functional testing — including a real Gemini call — happens in Task 15 once env vars are set.)
 
 - [ ] **Step 4: Commit**

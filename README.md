@@ -19,9 +19,9 @@ Next.js 16 (App Router, Route Handlers only, no separate backend), Tailwind CSS,
    - `GEMINI_API_KEY` — from [Google AI Studio](https://aistudio.google.com/apikey)
    - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — from an [Upstash](https://upstash.com) Redis database (free tier)
    - `TURNSTILE_SECRET_KEY` / `NEXT_PUBLIC_TURNSTILE_SITE_KEY` — from the [Cloudflare Turnstile dashboard](https://dash.cloudflare.com/?to=/:account/turnstile)
-2. Install dependencies: `npm install`
-3. Run the dev server: `npm run dev`
-4. Run tests: `npm test`
+2. Install dependencies: `pnpm install`
+3. Run the dev server: `pnpm dev`
+4. Run tests: `pnpm test`
 
 ## Deployment
 
