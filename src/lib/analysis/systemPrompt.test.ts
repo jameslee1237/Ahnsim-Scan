@@ -63,4 +63,10 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('유니코드');
     expect(SYSTEM_PROMPT).toContain('무료 이메일');
   });
+
+  it('instructs the model to treat login/credential-entry links as a strong red flag', () => {
+    expect(SYSTEM_PROMPT).toContain('로그인하거나 정보를 입력하도록 유도');
+    expect(SYSTEM_PROMPT).toContain('가짜 페이지');
+    expect(SYSTEM_PROMPT).toContain('비밀번호');
+  });
 });

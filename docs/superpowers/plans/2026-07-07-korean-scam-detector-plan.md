@@ -300,10 +300,27 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('71-100 위험');
     expect(SYSTEM_PROMPT).toContain('모순');
   });
+
+  it('instructs the model to look for domain impersonation patterns, not just name/domain mismatch', () => {
+    expect(SYSTEM_PROMPT).toContain('오타 도메인');
+    expect(SYSTEM_PROMPT).toContain('TLD');
+    expect(SYSTEM_PROMPT).toContain('유니코드');
+    expect(SYSTEM_PROMPT).toContain('무료 이메일');
+  });
+
+  it('instructs the model to treat login/credential-entry links as a strong red flag', () => {
+    expect(SYSTEM_PROMPT).toContain('로그인하거나 정보를 입력하도록 유도');
+    expect(SYSTEM_PROMPT).toContain('가짜 페이지');
+    expect(SYSTEM_PROMPT).toContain('비밀번호');
+  });
 });
 ```
 
 Note (post-review, prompt-quality research pass): added an explicit riskScore-to-verdict anchor sentence after researching classification-prompt best practices (Gemini prompt design guide + general 2026 prompt-engineering guidance) — both confirmed that explicit category-boundary anchors reduce internally-inconsistent LLM outputs, and this exact gap (verdict/riskScore could contradict each other) was independently flagged by the earlier code-quality review. Few-shot examples were researched and considered too, but explicitly skipped for v1 by user decision: zero-shot with concrete signals + anchors is the chosen accuracy/token-cost/latency balance (no per-request token growth, no multi-call ensembling); revisit only if Task 15's manual testing with real samples shows it's insufficient.
+
+Note (post-merge amendment, user question): after Task 3 merged, the user asked whether scams mimicking official sites/emails (lookalike domains) were covered. The original signal bullet only named "display name vs actual domain mismatch" with no concrete sub-patterns. Considered adding a verified official-domain allowlist as a rule-based backstop, but explicitly declined by the user — that would reopen the hybrid-detection tradeoff the original design explicitly avoided (pure LLM, no maintained threat database). Instead expanded the same bullet, prompt-only, with four concrete sub-patterns: typosquatting (오타 도메인), extra hyphens/subdomains, wrong TLD for a claimed Korean institution, and Unicode homograph characters — plus, from independent reviewer follow-up, senders claiming official status while using a free email provider (gmail/naver/daum). All additive to the existing bullet; no new infrastructure, no maintained data.
+
+Note (post-merge amendment, follow-up user question): the user further clarified the concern — scammers copy the official domain/email almost seamlessly, then build a visually identical fake page that serves one purpose only (harvesting credentials/card info). This surfaced a real, honest v1 boundary: the app analyzes text only and never visits the linked destination (visiting a user-submitted URL server-side would be an SSRF risk, and rendering it would add latency/cost that conflicts with the "fast single call" design). Documented this limitation explicitly in the design spec §11. Within the text-only boundary, strengthened the URL/personal-info signal bullets to name the detectable part of this exact pattern: a message urging the user to click a link and log in or enter credentials is itself a strong signal, regardless of what the destination page actually looks like, since legitimate Korean banks/government agencies don't request login or credential entry via SMS/email links.
 
 Note (post-review): the tests above include positional (`indexOf`) assertions, not just `toContain` — this catches an implementation that has the tags present somewhere in the string but not actually wrapping the body (e.g. empty tags plus body appended after). Containment-only checks would pass a broken implementation like that.
 
@@ -323,11 +340,11 @@ import type { AnalysisInput } from './types';
 export const SYSTEM_PROMPT = `당신은 한국어 스미싱/피싱 탐지 전문가입니다. 사용자가 제공하는 문자(SMS) 또는 이메일이 사기(피싱/스미싱)인지 분석하세요.
 
 주의 깊게 살펴볼 신호:
-- 발신번호/발신 주소 스푸핑 (표시된 이름과 실제 번호/도메인의 불일치)
+- 발신번호/발신 주소 스푸핑 및 도메인 위장 (표시된 이름과 실제 번호/도메인의 불일치, 공식 도메인과 비슷하지만 미묘하게 다른 철자나 불필요한 하이픈·서브도메인이 추가된 오타 도메인, 한국 기관임에도 부자연스러운 TLD 사용, 라틴 문자와 유사하게 보이는 유니코드 문자를 이용한 눈속임, 은행·공공기관을 사칭하면서 gmail·naver·daum 등 무료 이메일 주소를 사용하는 경우 등)
 - 정부기관, 은행, 택배사 등을 사칭하는 문구
 - 긴급성을 조성하는 표현 (예: "즉시 확인하지 않으면...")
-- 단축 URL 또는 의심스러운 링크
-- 개인정보(계좌번호, 인증번호, 주민등록번호 등) 또는 금전을 요구하는 문구
+- 단축 URL 또는 의심스러운 링크, 특히 링크를 눌러 로그인하거나 정보를 입력하도록 유도하는 경우 (실제 사이트와 거의 동일하게 위장한 가짜 페이지로 연결해 정보를 탈취하는 수법일 수 있습니다 — 정상적인 은행·공공기관은 문자나 이메일 링크를 통해 로그인, 인증정보, 카드번호 입력을 요구하지 않습니다)
+- 개인정보(계좌번호, 인증번호, 주민등록번호, 비밀번호 등) 또는 금전을 요구하는 문구
 
 위험도 점수(riskScore) 기준: 0-30 안전, 31-70 의심, 71-100 위험. verdict, riskScore, redFlags 세 값이 서로 모순되지 않도록 하세요 (예: verdict가 "위험"인데 riskScore가 20인 경우는 허용되지 않습니다).
 
