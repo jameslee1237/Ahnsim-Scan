@@ -57,6 +57,11 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('모순');
   });
 
+  it('instructs the model not to score threatening keywords as high risk without actual phishing mechanics', () => {
+    expect(SYSTEM_PROMPT).toContain('위협적이거나 자극적인 단어');
+    expect(SYSTEM_PROMPT).toContain('피싱 공격 수단');
+  });
+
   it('instructs the model to look for domain impersonation patterns, not just name/domain mismatch', () => {
     expect(SYSTEM_PROMPT).toContain('오타 도메인');
     expect(SYSTEM_PROMPT).toContain('TLD');
