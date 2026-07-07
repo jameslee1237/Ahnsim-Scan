@@ -23,7 +23,11 @@ declare global {
     turnstile?: {
       render: (
         container: HTMLElement,
-        options: { sitekey: string; callback: (token: string) => void },
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          size?: 'flexible' | 'compact';
+        },
       ) => string;
       reset: (widgetId: string) => void;
     };
@@ -31,6 +35,12 @@ declare global {
 }
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '';
+
+// Turnstile의 flexible/normal 크기는 최소 너비가 300px로 고정되어 있어,
+// Card 안쪽 여백을 뺀 실제 사용 가능 폭이 그보다 좁은 작은 화면(예: 320px
+// 뷰포트)에서는 위젯이 카드 밖으로 넘칠 수 있다. compact(150px)는 항상
+// 들어가므로, 렌더링 시점의 화면 너비를 보고 선택한다.
+const NARROW_VIEWPORT_THRESHOLD = 400;
 
 export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
   const [messageType, setMessageType] = useState<MessageType>('sms');
@@ -55,6 +65,7 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
     widgetIdRef.current = window.turnstile.render(widgetRef.current, {
       sitekey: TURNSTILE_SITE_KEY,
       callback: (token: string) => setTurnstileToken(token),
+      size: window.innerWidth < NARROW_VIEWPORT_THRESHOLD ? 'compact' : 'flexible',
     });
     renderedRef.current = true;
   };
