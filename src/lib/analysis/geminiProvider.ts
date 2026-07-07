@@ -26,6 +26,9 @@ export const analyzeWithGemini = async (input: AnalysisInput): Promise<AnalysisR
       systemInstruction: SYSTEM_PROMPT,
       responseMimeType: 'application/json',
       maxOutputTokens: MAX_OUTPUT_TOKENS,
+      // 고정된 스키마로 판정만 내리는 분류 작업이라 별도의 사고 과정이 필요 없으며,
+      // thinking을 켜두면 maxOutputTokens 예산을 내부 추론과 나눠 써서 응답이 잘릴 수 있다.
+      thinkingConfig: { thinkingBudget: 0 },
       responseSchema: {
         type: Type.OBJECT,
         properties: {

@@ -58,6 +58,14 @@ describe('analyzeWithGemini', () => {
     ).rejects.toThrow();
   });
 
+  it('throws when the model response is malformed JSON', async () => {
+    generateContentMock.mockResolvedValue({ text: '{"verdict": "위험", "riskSc' });
+
+    await expect(
+      analyzeWithGemini({ type: 'sms', senderNumber: '010', messageBody: '테스트 메시지입니다' }),
+    ).rejects.toThrow();
+  });
+
   it('throws when GEMINI_API_KEY is not set', async () => {
     delete process.env.GEMINI_API_KEY;
 
