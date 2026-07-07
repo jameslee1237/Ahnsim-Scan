@@ -383,10 +383,12 @@ export const buildUserContent = (input: AnalysisInput): string => {
 
 Note (post-review): the injection-defense paragraph explicitly names `발신번호`/`발신 주소`/`제목` alongside the tagged content, not just the `<message_to_analyze>` block. `senderNumber`/`senderAddress`/`subject` are free text too (up to 50/200/500 chars per `types.ts`) and sit outside the tags in `buildUserContent` — the original wording only told the model to ignore instructions found *inside the tags*, leaving those three fields with no such coverage. `buildUserContent`'s structure is unchanged; only the prose instruction was broadened.
 
+Note (post-Task-16 manual testing): real-sample testing surfaced a keyword-overweighting bug — an email with "hacking" in the sender address, subject, and body scored 90-95/위험 despite having no suspicious link, no institutional impersonation, and no credential/money request (i.e. no actual phishing mechanism, just alarming vocabulary). Added an explicit calibration rule telling the model not to raise riskScore on threatening/provocative words alone without one of the enumerated structural signals actually present. Verified with real Gemini calls: the repro case dropped to 안전/25, while a real courier-impersonation smishing sample with a credential-harvesting link stayed unchanged at 위험/95 — the fix targets keyword-triggering specifically, not detection sensitivity broadly.
+
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/lib/analysis/systemPrompt.test.ts`
-Expected: PASS (9 tests)
+Expected: PASS (10 tests)
 
 - [ ] **Step 5: Commit**
 
