@@ -1046,6 +1046,8 @@ git add src/lib/security/turnstile.ts src/lib/security/turnstile.test.ts
 git commit -m "feat: add Turnstile server-side verification"
 ```
 
+**Note (post-milestone-review, Opus 4.8 architecture review after Task 9 — finding D1):** the original code above validated `token` but not `TURNSTILE_SECRET_KEY`, using a bare `!` non-null assertion. If the env var is unset, `secret` serializes to the literal string `"undefined"`, Cloudflare returns `success: false`, and every single user silently gets a 403 "봇 확인에 실패했습니다" — with nothing distinguishing a real bot from a server misconfiguration. Fixed by validating `TURNSTILE_SECRET_KEY` before building the request body and throwing (not returning `false`) when it's missing, so the route handler's existing catch block turns it into a 503 instead. This also brings `turnstile.ts` in line with `geminiProvider.ts`'s call-time validation pattern (rather than `rateLimit.ts`/`quotaGuard.ts`'s module-load pattern, which doesn't fit a stateless function with no client to construct).
+
 ---
 
 ## Task 9: API route handler
@@ -1340,6 +1342,8 @@ git add src/app/api/analyze/route.ts src/app/api/analyze/route.test.ts
 git commit -m "feat: add /api/analyze route handler"
 ```
 
+**Note (post-milestone-review, Opus 4.8 architecture review after Task 9 — finding A1):** the original code above ran `AnalysisInputSchema.safeParse(rest)` last, after the Turnstile/rate-limit/quota block. `checkGlobalQuota()` increments its Redis counters unconditionally before returning, so a request with a valid token and an under-limit IP but a malformed body would still burn a single-use Turnstile token, an IP rate-limit slot, and both global quota counters before the free, local, no-network schema check ever rejected it with 400 — quietly eroding the exact shared-quota protection this checks exist for. Fixed by moving the schema validation to immediately after the null/object body guard, before the turnstile/rate-limit/quota block, so malformed requests cost nothing. `route.test.ts` gained an assertion (`expect(verifyTurnstileToken/checkIpRateLimit/checkGlobalQuota).not.toHaveBeenCalled()`) on the invalid-shape test to lock this ordering in.
+
 ---
 
 ## Task 10: Environment variables & README
@@ -1383,7 +1387,7 @@ Korean SMS/email scam detector. See `docs/design.md`-equivalent spec for full ar
 
 ## Deployment
 
-Deploy to Vercel. Set all five environment variables above in the Vercel project settings before the first deploy — the app will throw at request time (not build time) if `GEMINI_API_KEY` is missing.
+Deploy to Vercel. Set all five environment variables above in the Vercel project settings before the first deploy. A missing `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` throws at module load (first request after cold start); a missing `GEMINI_API_KEY` or `TURNSTILE_SECRET_KEY` throws at request time, on the first call that needs it — both cases are caught by the route handler and returned as a sanitized 503, never a raw error page.
 ```
 
 - [ ] **Step 3: Commit**

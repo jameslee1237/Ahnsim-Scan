@@ -13,6 +13,15 @@ describe('verifyTurnstileToken', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  it('throws when TURNSTILE_SECRET_KEY is not set, without calling Cloudflare', async () => {
+    delete process.env.TURNSTILE_SECRET_KEY;
+    global.fetch = vi.fn();
+    await expect(verifyTurnstileToken('some-token')).rejects.toThrow(
+      'TURNSTILE_SECRET_KEY is not set',
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('returns true when Cloudflare confirms success', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
