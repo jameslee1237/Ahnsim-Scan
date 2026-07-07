@@ -51,9 +51,9 @@ describe('SYSTEM_PROMPT', () => {
 
   it('anchors riskScore ranges to each verdict so the two fields cannot contradict', () => {
     expect(SYSTEM_PROMPT).toContain('riskScore');
-    expect(SYSTEM_PROMPT).toContain('안전');
-    expect(SYSTEM_PROMPT).toContain('의심');
-    expect(SYSTEM_PROMPT).toContain('위험');
+    expect(SYSTEM_PROMPT).toContain('0-30 안전');
+    expect(SYSTEM_PROMPT).toContain('31-70 의심');
+    expect(SYSTEM_PROMPT).toContain('71-100 위험');
     expect(SYSTEM_PROMPT).toContain('모순');
   });
 });
