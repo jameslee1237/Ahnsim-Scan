@@ -323,7 +323,7 @@ describe('SYSTEM_PROMPT', () => {
 });
 ```
 
-Note (post-review, prompt-quality research pass): added an explicit riskScore-to-verdict anchor sentence after researching classification-prompt best practices (Gemini prompt design guide + general 2026 prompt-engineering guidance) — both confirmed that explicit category-boundary anchors reduce internally-inconsistent LLM outputs, and this exact gap (verdict/riskScore could contradict each other) was independently flagged by the earlier code-quality review. Few-shot examples were researched and considered too, but explicitly skipped for v1 by user decision: zero-shot with concrete signals + anchors is the chosen accuracy/token-cost/latency balance (no per-request token growth, no multi-call ensembling); revisit only if Task 15's manual testing with real samples shows it's insufficient.
+Note (post-review, prompt-quality research pass): added an explicit riskScore-to-verdict anchor sentence after researching classification-prompt best practices (Gemini prompt design guide + general 2026 prompt-engineering guidance) — both confirmed that explicit category-boundary anchors reduce internally-inconsistent LLM outputs, and this exact gap (verdict/riskScore could contradict each other) was independently flagged by the earlier code-quality review. Few-shot examples were researched and considered too, but explicitly skipped for v1 by user decision: zero-shot with concrete signals + anchors is the chosen accuracy/token-cost/latency balance (no per-request token growth, no multi-call ensembling); revisit only if Task 16's manual testing with real samples shows it's insufficient.
 
 Note (post-merge amendment, user question): after Task 3 merged, the user asked whether scams mimicking official sites/emails (lookalike domains) were covered. The original signal bullet only named "display name vs actual domain mismatch" with no concrete sub-patterns. Considered adding a verified official-domain allowlist as a rule-based backstop, but explicitly declined by the user — that would reopen the hybrid-detection tradeoff the original design explicitly avoided (pure LLM, no maintained threat database). Instead expanded the same bullet, prompt-only, with four concrete sub-patterns: typosquatting (오타 도메인), extra hyphens/subdomains, wrong TLD for a claimed Korean institution, and Unicode homograph characters — plus, from independent reviewer follow-up, senders claiming official status while using a free email provider (gmail/naver/daum). All additive to the existing bullet; no new infrastructure, no maintained data.
 
@@ -1770,7 +1770,7 @@ export default RootLayout;
 - [ ] **Step 3: Run the dev server and smoke-test manually**
 
 Run: `pnpm dev`
-Open `http://localhost:3000`, confirm the page renders in Korean with the form and privacy notice visible. (Full functional testing — including a real Gemini call — happens in Task 15 once env vars are set.)
+Open `http://localhost:3000`, confirm the page renders in Korean with the form and privacy notice visible. (Full functional testing — including a real Gemini call — happens in Task 16 once env vars are set.)
 
 - [ ] **Step 4: Commit**
 
@@ -1781,7 +1781,53 @@ git commit -m "feat: wire home page and Korean layout"
 
 ---
 
-## Task 15: Manual verification checklist
+## Task 15: Responsive design (mobile + desktop)
+
+**Files:**
+- Modify: `src/app/page.tsx`
+- Modify: `src/components/AnalyzeForm.tsx`
+- Modify: `src/components/ResultCard.tsx`
+- Modify: `src/components/ui/button.tsx`, `src/components/ui/input.tsx` (shadcn-generated — touch-target sizing)
+
+**Why this is its own task:** Tasks 12–14 built and redesigned the UI while only ever being checked against a single implicit viewport (via `curl`-fetched HTML and reasoning about Tailwind classes — no actual browser was available to render at different widths). The layout has never been verified to actually adapt between a narrow phone and a wide desktop window; "responsive" so far means "happens to not be broken," not "was designed for both."
+
+Known concrete gaps to fix, not just "check and see":
+
+1. **Touch targets are too small on mobile.** shadcn's default `Button`/`Input`/`Tabs` height is `h-8` (32px) — fine for a dense desktop UI, well under the ~44px minimum recommended by both Apple HIG and Material Design for comfortable mobile tapping. This app's forms are sparse enough that there's no reason to keep desktop-dense sizing; raise the interactive-control height (e.g. a `h-11` override on `Button`/`Input`/`TabsTrigger` used in `AnalyzeForm.tsx`, or a responsive `h-8 sm:h-11`-style split if keeping desktop dense is preferred).
+2. **The page never actually widens for desktop.** `page.tsx`'s `<main>` is a flat `max-w-xl` (576px) at every viewport — correct as a *ceiling* for a linear, single-task form (don't turn this into a multi-column dashboard), but currently identical at 375px and 1920px means desktop users get the same narrow column with large empty margins and no extra breathing room. Add modest breakpoint scaling to spacing/max-width (e.g. `max-w-xl lg:max-w-2xl`, `py-8 sm:py-12 lg:py-16`) rather than a structural layout change.
+3. **Untested at the extremes.** Nothing has confirmed the SMS/email `Tabs`, sender/subject `Input`s, and the `Textarea` character counter don't overflow, wrap awkwardly, or clip at a 320px-wide viewport (smallest common phone, e.g. iPhone SE) — or that `ResultCard`'s red-flag list handles a long-flag-text wrap cleanly at that width.
+
+- [ ] **Step 1: Raise touch-target sizing for mobile**
+
+Apply a taller control height across `Button`, `Input`, and the `Tabs` trigger used in `AnalyzeForm.tsx` (adjust the shadcn-generated defaults or override via `className` at the call sites — whichever keeps the change scoped to this app's actual usage rather than every future shadcn component).
+
+- [ ] **Step 2: Add breakpoint-aware spacing/width to the home page**
+
+Update `src/app/page.tsx`'s `<main>` and heading block to scale modestly at `sm:`/`lg:` breakpoints (max-width, vertical padding, heading size) — a ceiling increase and breathing room, not a structural redesign of the single-column form layout.
+
+- [ ] **Step 3: Verify narrow-viewport rendering**
+
+Using a real browser's responsive/device-emulation mode (not just `curl`), check the page at 320px, 375px, and 768px widths: confirm the Tabs control, both sender-field layouts (SMS and email), the textarea + counter, the Turnstile widget, and `ResultCard` (with a long `redFlags` entry) all reflow without horizontal overflow or clipped text. This step requires an actual browser — it cannot be verified through HTML-content assertions alone, since the failure mode here is visual (overflow, wrapping, cramped spacing), not structural.
+
+- [ ] **Step 4: Verify wide-desktop rendering**
+
+At ~1440px+ width, confirm the page no longer looks like a phone layout stranded in the middle of the screen with excessive empty margins — modest extra width/padding should read as an intentional desktop treatment, not an afterthought.
+
+- [ ] **Step 5: Run the full verification suite**
+
+Run: `npx tsc --noEmit && pnpm lint && pnpm test && pnpm build`
+Expected: all four clean, 48/48 tests passing (this task changes no logic, only responsive styling).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/app/page.tsx src/components/AnalyzeForm.tsx src/components/ResultCard.tsx src/components/ui/button.tsx src/components/ui/input.tsx
+git commit -m "feat: responsive layout and touch-target sizing for mobile/desktop"
+```
+
+---
+
+## Task 16: Manual verification checklist
 
 This task has no code changes — it's the hands-on verification pass matching spec §9 and §10.2. Requires real `.env.local` values (Gemini API key, Upstash Redis, Turnstile keys) set up per Task 10's README.
 
@@ -1821,7 +1867,7 @@ Check the terminal running `npm run dev` (and later, Vercel function logs after 
 
 ## Self-Review Notes
 
-**Spec coverage:** §3 architecture → Tasks 1, 5, 9, 14. §4 input design → Task 2. §5 provider abstraction → Tasks 4–5. §6 abuse prevention → Tasks 6–7, wired in Task 9. §7 error handling → Task 9. §8 result screen → Task 13. §9 test plan → Task 15 (steps 1–5 map directly to the spec's bullets). §10.1 prompt injection → Task 3. §10.2 client non-exposure → Tasks 4–5 (`server-only`), Task 9 (schema-only response, sanitized errors), Task 15 step 6. §10.3 PII → Task 2 (length cap), Task 9/comment (no error-object logging), Task 11 (contextual notice), Task 13 (escaped rendering), Task 15 step 7. §11 roadmap is intentionally out of scope for this plan.
+**Spec coverage:** §3 architecture → Tasks 1, 5, 9, 14. §4 input design → Task 2. §5 provider abstraction → Tasks 4–5. §6 abuse prevention → Tasks 6–7, wired in Task 9. §7 error handling → Task 9. §8 result screen → Task 13. §9 test plan → Task 16 (steps 1–5 map directly to the spec's bullets). §10.1 prompt injection → Task 3. §10.2 client non-exposure → Tasks 4–5 (`server-only`), Task 9 (schema-only response, sanitized errors), Task 16 step 6. §10.3 PII → Task 2 (length cap), Task 9/comment (no error-object logging), Task 11 (contextual notice), Task 13 (escaped rendering), Task 16 step 7. §11 roadmap is intentionally out of scope for this plan.
 
 **Type consistency verified:** `AnalysisInput`/`AnalysisResult` field names (`senderNumber`, `messageBody`, `senderAddress`, `subject`, `body`, `verdict`, `riskScore`, `redFlags`, `explanation`, `recommendedAction`) are identical across `types.ts`, `systemPrompt.ts`, `geminiProvider.ts`, `provider.ts`, `route.ts`, `AnalyzeForm.tsx`, and `ResultCard.tsx`. `checkIpRateLimit` and `checkGlobalQuota` return shapes match their usage in `route.ts` exactly, including the `reason` field used to select the daily-vs-minute error message.
 
@@ -1829,4 +1875,4 @@ Check the terminal running `npm run dev` (and later, Vercel function logs after 
 
 **Revision log (2026-07-07, post-review):** converted all `function` declarations to `const` + arrow functions throughout; switched styling from inline `style={{}}` to Tailwind CSS utility classes (scaffold flag changed to `--tailwind`, `globals.css` import restored in `layout.tsx`); considered and explicitly declined an additional session-cookie throttle for VPN/IP-rotation abuse — the existing IP rate limit + global quota guard combination is accepted for v1 since the free-tier design already bounds worst-case abuse to temporary shared unavailability (self-resolving, still $0 cost), not a billing or data risk.
 
-**Revision log (2026-07-07, second pass):** fixed a real functional bug — Turnstile tokens are single-use and get consumed on every server-side verification (success or failure), but the form never reset the widget/token, so a second submission in the same session would always fail bot verification. Added `resetTurnstile()` (Task 12) called after every submission, plus a manual verification step (Task 15) covering back-to-back submissions. Added an `x-real-ip` fallback to `getClientIp` (Task 9) for more reliable IP extraction. Added a caveat note on `@google/genai`'s API shape in Task 4 (verify against the installed package if it doesn't match). Considered and explicitly declined CSP/security response headers for v1 — the existing defenses already cover the realistic attack surface, and a misconfigured CSP risks silently breaking the Turnstile widget.
+**Revision log (2026-07-07, second pass):** fixed a real functional bug — Turnstile tokens are single-use and get consumed on every server-side verification (success or failure), but the form never reset the widget/token, so a second submission in the same session would always fail bot verification. Added `resetTurnstile()` (Task 12) called after every submission, plus a manual verification step (Task 16) covering back-to-back submissions. Added an `x-real-ip` fallback to `getClientIp` (Task 9) for more reliable IP extraction. Added a caveat note on `@google/genai`'s API shape in Task 4 (verify against the installed package if it doesn't match). Considered and explicitly declined CSP/security response headers for v1 — the existing defenses already cover the realistic attack surface, and a misconfigured CSP risks silently breaking the Turnstile widget.
