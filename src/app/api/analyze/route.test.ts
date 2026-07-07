@@ -67,6 +67,32 @@ describe('POST /api/analyze', () => {
     expect(res.status).toBe(400);
   });
 
+  it('returns 400 for a malformed (non-JSON) request body', async () => {
+    const req = new NextRequest('http://localhost/api/analyze', {
+      method: 'POST',
+      body: 'not valid json{{{',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '1.2.3.4' },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for a JSON body of null instead of an object', async () => {
+    // `null` parses successfully (it's valid JSON), unlike the malformed-body
+    // case above, but isn't an object - this exercises the separate guard
+    // for a body that parses fine but isn't destructurable.
+    const res = await POST(makeRequest(null));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 403 without calling verifyTurnstileToken when turnstileToken is missing', async () => {
+    vi.mocked(verifyTurnstileToken).mockClear();
+    const { type, senderNumber, messageBody } = validSmsPayload;
+    const res = await POST(makeRequest({ type, senderNumber, messageBody }));
+    expect(res.status).toBe(403);
+    expect(verifyTurnstileToken).not.toHaveBeenCalled();
+  });
+
   it('returns the analysis result on success', async () => {
     vi.mocked(analyzeMessage).mockResolvedValue({
       verdict: '위험',
@@ -99,5 +125,14 @@ describe('POST /api/analyze', () => {
     expect(res.status).toBe(503);
     const data = await res.json();
     expect(data.error).not.toContain('10.0.0.5');
+  });
+
+  it('returns 500 instead of forwarding a malformed analyzeMessage result', async () => {
+    // @ts-expect-error intentionally malformed to exercise the route's own
+    // AnalysisResultSchema re-validation, independent of geminiProvider.ts's
+    // own validation.
+    vi.mocked(analyzeMessage).mockResolvedValue({ verdict: '알수없음', riskScore: 5 });
+    const res = await POST(makeRequest(validSmsPayload));
+    expect(res.status).toBe(500);
   });
 });
