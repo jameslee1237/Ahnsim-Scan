@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { PrivacyNotice } from '@/components/PrivacyNotice';
 import { AnalyzeForm } from '@/components/AnalyzeForm';
@@ -9,6 +9,16 @@ import type { AnalysisResult } from '@/lib/analysis/types';
 
 const HomePage = () => {
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
+
+  // 결과 카드는 폼 아래에 새로 나타나는데, 폼이 길면 화면 밖으로 벗어날 수
+  // 있다. 결과가 생기면 그쪽으로 스크롤하고, aria-live로 스크린 리더 사용자
+  // 에게도 새 결과가 나타났음을 알린다.
+  useEffect(() => {
+    if (result) {
+      resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [result]);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col px-6 py-12">
@@ -21,7 +31,11 @@ const HomePage = () => {
       </div>
       <PrivacyNotice />
       <AnalyzeForm onResult={setResult} />
-      {result && <ResultCard result={result} onClear={() => setResult(null)} />}
+      {result && (
+        <div ref={resultRef} role="status" aria-live="polite">
+          <ResultCard result={result} onClear={() => setResult(null)} />
+        </div>
+      )}
     </main>
   );
 };
