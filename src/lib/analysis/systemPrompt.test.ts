@@ -49,6 +49,12 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('redFlags');
   });
 
+  it('instructs the model to treat family/acquaintance impersonation as its own strong signal, not just institutional impersonation', () => {
+    expect(SYSTEM_PROMPT).toContain('가족·지인 사칭');
+    expect(SYSTEM_PROMPT).toContain('메신저피싱');
+    expect(SYSTEM_PROMPT).toContain('링크나 기관 도메인이 전혀 없어도 그 자체로 강한 위험 신호');
+  });
+
   it('anchors riskScore ranges to each verdict so the two fields cannot contradict', () => {
     expect(SYSTEM_PROMPT).toContain('riskScore');
     expect(SYSTEM_PROMPT).toContain('0-30 안전');
@@ -69,9 +75,15 @@ describe('SYSTEM_PROMPT', () => {
     expect(SYSTEM_PROMPT).toContain('netlify.app');
   });
 
-  it('instructs the model not to guess at credential-harvesting intent without explicit textual evidence', () => {
+  it('instructs the model not to fabricate red flags with no textual basis (e.g. "implicit" urgency)', () => {
+    expect(SYSTEM_PROMPT).toContain('실제로 존재하는 문구나 패턴에 근거해야 합니다');
     expect(SYSTEM_PROMPT).toContain('가능성을 배제할 수 없다');
-    expect(SYSTEM_PROMPT).toContain('근거 없는 가능성이 아니라');
+    expect(SYSTEM_PROMPT).toContain('암시적');
+  });
+
+  it('instructs the model to cap bare, narrative-free money/info demands at 의심 rather than 위험', () => {
+    expect(SYSTEM_PROMPT).toContain('무맥락한 요구');
+    expect(SYSTEM_PROMPT).toContain('보이스피싱');
   });
 
   it('instructs the model to look for domain impersonation patterns, not just name/domain mismatch', () => {
