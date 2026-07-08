@@ -1,11 +1,20 @@
 import 'server-only';
 import { GoogleGenAI, Type } from '@google/genai';
-import { AnalysisResultSchema, type AnalysisInput, type AnalysisResult } from './types';
+import {
+  AnalysisResultSchema,
+  RISK_SCORE_FIELD_DESCRIPTION,
+  VERDICT_BAND_TEXT,
+  type AnalysisInput,
+  type AnalysisResult,
+} from './types';
 import { SYSTEM_PROMPT, buildUserContent } from './systemPrompt';
 
-// gemini-2.5-flash-lite is also an option if the free-tier quota on flash
-// becomes a bottleneck — same responseSchema contract applies to both.
-const MODEL_NAME = 'gemini-2.5-flash';
+// flash-lite documents a materially larger free-tier daily quota than flash
+// (and this project's actual observed flash quota — 20 req/day on this
+// project — was far below either model's documented figures, worth
+// re-checking against the Google AI Studio console). Same responseSchema
+// contract applies to both, so this is a same-behavior swap.
+const MODEL_NAME = 'gemini-2.5-flash-lite';
 const MAX_OUTPUT_TOKENS = 800;
 
 const getClient = (): GoogleGenAI => {
@@ -35,11 +44,11 @@ export const analyzeWithGemini = async (input: AnalysisInput): Promise<AnalysisR
           verdict: {
             type: Type.STRING,
             enum: ['안전', '의심', '위험'],
-            description: '판정 결과. riskScore와 반드시 일치해야 함 (0-30=안전, 31-70=의심, 71-100=위험).',
+            description: `판정 결과. riskScore와 반드시 일치해야 함 (${VERDICT_BAND_TEXT}).`,
           },
           riskScore: {
-            type: Type.NUMBER,
-            description: '0에서 100 사이의 위험도 점수.',
+            type: Type.INTEGER,
+            description: RISK_SCORE_FIELD_DESCRIPTION,
           },
           redFlags: {
             type: Type.ARRAY,
