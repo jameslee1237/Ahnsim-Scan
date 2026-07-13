@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { highlightEvidence } from '@/lib/highlightEvidence';
 import type { AnalysisResult } from '@/lib/analysis/types';
 
 interface IResultCardProps {
   result: AnalysisResult;
+  originalText: string;
   onClear: () => void;
 }
 
@@ -37,8 +39,14 @@ const VERDICT_STYLE: Record<
   },
 };
 
-export const ResultCard = ({ result, onClear }: IResultCardProps) => {
+export const ResultCard = ({ result, originalText, onClear }: IResultCardProps) => {
   const { icon: VerdictIcon, badgeClassName, progressClassName } = VERDICT_STYLE[result.verdict];
+  // 이미지 모드에서는 API가 판독한 extractedText가 우선이고, 텍스트 모드
+  // 에서는 항상 빈 문자열이므로 폼이 넘긴 원본 입력(originalText)으로
+  // 대체한다.
+  const displayText = result.extractedText || originalText;
+  const evidences = result.redFlags.map((redFlag) => redFlag.evidence);
+  const segments = displayText ? highlightEvidence(displayText, evidences) : [];
 
   return (
     <Card className="mt-6 animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
@@ -61,18 +69,37 @@ export const ResultCard = ({ result, onClear }: IResultCardProps) => {
 
         <Progress value={result.riskScore} aria-label="위험도" className={progressClassName} />
 
+        {displayText && (
+          <div>
+            <h3 className="mb-2 text-sm font-medium">
+              {result.extractedText ? '판독된 메시지' : '분석한 메시지'}
+            </h3>
+            <p className="rounded-lg border bg-muted/30 p-3 text-sm whitespace-pre-wrap">
+              {segments.map((segment, index) =>
+                segment.highlighted ? (
+                  <mark key={index} className="rounded bg-amber-200/70 px-0.5 dark:bg-amber-500/30">
+                    {segment.text}
+                  </mark>
+                ) : (
+                  <span key={index}>{segment.text}</span>
+                ),
+              )}
+            </p>
+          </div>
+        )}
+
         {result.redFlags.length > 0 && (
           <div>
             <h3 className="mb-2 text-sm font-medium">주요 위험 신호</h3>
             <ul className="space-y-1.5">
-              {result.redFlags.map((flag, index) => (
+              {result.redFlags.map((redFlag, index) => (
                 <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
                   <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-500" aria-hidden="true" />
                   {/* flex 아이템은 기본적으로 min-width: auto라 내용 너비만큼
                       줄어들기를 거부할 수 있다. min-w-0으로 좁은 화면에서도
                       줄바꿈되도록 강제한다(Card에 overflow-hidden이 있어,
                       그러지 않으면 긴 텍스트가 잘릴 수 있다). */}
-                  <span className="min-w-0">{flag}</span>
+                  <span className="min-w-0">{redFlag.flag}</span>
                 </li>
               ))}
             </ul>
