@@ -6,16 +6,17 @@ import Script from 'next/script';
 import { Loader2, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { ImageUploader } from '@/components/ImageUploader';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { MAX_INPUT_LENGTH, type AnalysisResult } from '@/lib/analysis/types';
 
-type MessageType = 'sms' | 'email';
+type MessageType = 'sms' | 'email' | 'image';
 
 interface IAnalyzeFormProps {
-  onResult: (result: AnalysisResult) => void;
+  onResult: (result: AnalysisResult, displayText: string) => void;
 }
 
 declare global {
@@ -51,6 +52,7 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
   const [senderAddress, setSenderAddress] = useState('');
   const [subject, setSubject] = useState('');
   const [text, setText] = useState('');
+  const [images, setImages] = useState<string[]>([]);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -88,7 +90,12 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
     event.preventDefault();
     setError('');
 
-    if (text.trim().length < 5) {
+    if (messageType === 'image') {
+      if (images.length === 0) {
+        setError('분석할 스크린샷을 1장 이상 업로드해주세요.');
+        return;
+      }
+    } else if (text.trim().length < 5) {
       setError('분석할 내용을 5자 이상 입력해주세요.');
       return;
     }
@@ -100,7 +107,9 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
     const payload =
       messageType === 'sms'
         ? { type: 'sms', senderNumber, messageBody: text, turnstileToken }
-        : { type: 'email', senderAddress, subject, body: text, turnstileToken };
+        : messageType === 'email'
+          ? { type: 'email', senderAddress, subject, body: text, turnstileToken }
+          : { type: 'image', images, turnstileToken };
 
     setLoading(true);
     try {
@@ -114,7 +123,10 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
         setError(data.error ?? '오류가 발생했습니다.');
         return;
       }
-      onResult(data as AnalysisResult);
+      // 이미지 모드에서는 API 응답 자체의 extractedText가 원문 표시를
+      // 담당하므로 빈 문자열을 넘긴다 — ResultCard가 이 우선순위로 표시할
+      // 텍스트를 고른다.
+      onResult(data as AnalysisResult, messageType === 'image' ? '' : text);
     } catch {
       setError('네트워크 오류가 발생했습니다.');
     } finally {
@@ -128,6 +140,7 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
     setSenderAddress('');
     setSubject('');
     setText('');
+    setImages([]);
     setError('');
   };
 
@@ -156,6 +169,9 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
               </TabsTrigger>
               <TabsTrigger value="email" className="flex-1">
                 이메일
+              </TabsTrigger>
+              <TabsTrigger value="image" className="flex-1">
+                스크린샷
               </TabsTrigger>
             </TabsList>
 
@@ -198,22 +214,31 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
                 />
               </div>
             </TabsContent>
+
+            <TabsContent
+              value="image"
+              className="animate-in fade-in-0 slide-in-from-top-1 pt-4 duration-200"
+            >
+              <ImageUploader images={images} onImagesChange={setImages} />
+            </TabsContent>
           </Tabs>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="messageBody">문자/이메일 본문</Label>
-            <Textarea
-              id="messageBody"
-              value={text}
-              maxLength={MAX_INPUT_LENGTH}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="받은 문자나 이메일 내용을 그대로 붙여넣으세요"
-              className="h-32 resize-none"
-            />
-            <div className={`text-right text-xs transition-colors ${counterClassName}`}>
-              {text.length} / {MAX_INPUT_LENGTH}
+          {messageType !== 'image' && (
+            <div className="space-y-1.5">
+              <Label htmlFor="messageBody">문자/이메일 본문</Label>
+              <Textarea
+                id="messageBody"
+                value={text}
+                maxLength={MAX_INPUT_LENGTH}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="받은 문자나 이메일 내용을 그대로 붙여넣으세요"
+                className="h-32 resize-none"
+              />
+              <div className={`text-right text-xs transition-colors ${counterClassName}`}>
+                {text.length} / {MAX_INPUT_LENGTH}
+              </div>
             </div>
-          </div>
+          )}
 
           <div ref={widgetRef} className="flex justify-center" />
 
@@ -237,7 +262,10 @@ export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
             </p>
           )}
 
-          <div className="flex gap-2">
+          {/* 모바일에서 폼이 길어질 때(특히 스크린샷 여러 장 업로드 시) 제출
+              버튼이 화면 밖으로 밀려나지 않도록 하단에 고정한다. 데스크톱
+              (sm 이상)에서는 일반적인 폼 흐름으로 되돌아간다. */}
+          <div className="sticky bottom-4 z-10 flex gap-2 rounded-lg bg-background/95 py-2 backdrop-blur sm:static sm:bg-transparent sm:py-0 sm:backdrop-blur-none">
             <Button type="submit" disabled={loading} className="flex-1">
               {loading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
               {loading ? '분석 중...' : '분석하기'}
