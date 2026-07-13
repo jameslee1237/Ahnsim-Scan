@@ -31,6 +31,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# nested checkouts used for isolated agent work — should never be tracked,
+# and tools that recursively glob the repo (eslint, vitest) must also
+# exclude this path explicitly, since .gitignore alone doesn't stop them
+.claude/worktrees/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

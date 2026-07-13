@@ -34,6 +34,13 @@ export const MAX_SINGLE_IMAGE_DATA_URL_LENGTH = 1_200_000;
 // base64 이미지 4MB(디코딩 기준)" 한도, Vercel 함수의 "요청 바디 4.5MB"
 // 한도. base64는 원본 대비 약 1.33배 커지므로, 이 문자열 길이 합이 대략
 // 디코딩 바이트 수와 비슷한 자릿수라 두 한도 모두에 여유를 남긴다.
+//
+// 이 값은 MAX_IMAGES × MAX_SINGLE_IMAGE_DATA_URL_LENGTH(5 × 1,200,000 =
+// 6,000,000)보다 작다 — 의도적이다. 개별 상한은 "이미지 하나가 상한을
+// 독점하지 못하게" 막는 1차 방어선일 뿐이고, 실제 총량을 묶는 것은 이
+// 전체 합산 상한이다. 즉 모든 이미지가 개별 상한에 가깝게 큰 경우 이
+// 합산 상한이 먼저 걸려 거부되는 것이 정상 동작이며, 세 상수 사이에
+// 산술적 정합성(개별×개수 ≤ 합산)을 맞출 필요는 없다.
 export const MAX_TOTAL_IMAGES_DATA_URL_LENGTH = 4_000_000;
 
 export const ImageInputSchema = z.object({
