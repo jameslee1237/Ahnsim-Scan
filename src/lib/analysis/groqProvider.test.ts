@@ -26,9 +26,10 @@ describe('analyzeWithGroq', () => {
             content: JSON.stringify({
               verdict: '위험',
               riskScore: 90,
-              redFlags: ['긴급성 조성'],
+              redFlags: [{ flag: '긴급성 조성', evidence: '즉시 확인' }],
               explanation: '설명',
               recommendedAction: '링크를 클릭하지 마세요',
+              extractedText: '',
             }),
           },
         },
@@ -58,7 +59,7 @@ describe('analyzeWithGroq', () => {
       choices: [
         {
           message: {
-            content: JSON.stringify({ verdict: '알수없음', riskScore: 5, redFlags: [], explanation: '', recommendedAction: '' }),
+            content: JSON.stringify({ verdict: '알수없음', riskScore: 5, redFlags: [], explanation: '', recommendedAction: '', extractedText: '' }),
           },
         },
       ],
