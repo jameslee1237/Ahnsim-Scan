@@ -10,6 +10,8 @@
 
 - [Design spec](docs/superpowers/specs/2026-07-07-korean-scam-detector-design.md) — architecture, detection approach, security/privacy decisions
 - [Implementation plan](docs/superpowers/plans/2026-07-07-korean-scam-detector-plan.md) — TDD task breakdown for v1
+- [v2 design spec](docs/superpowers/specs/2026-07-13-v2-screenshot-analysis-and-ui-upgrade-design.md) — screenshot analysis + UI upgrade
+- [v2 implementation plan](docs/superpowers/plans/2026-07-13-v2-screenshot-analysis-and-ui-upgrade-plan.md) — TDD task breakdown for v2
 
 ## Stack
 
