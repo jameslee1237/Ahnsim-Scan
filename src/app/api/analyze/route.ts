@@ -99,6 +99,19 @@ export const POST = async (req: NextRequest) => {
     // boundary itself so that guarantee doesn't depend on every current and
     // future provider implementation remembering to uphold it.
     const validatedResult = AnalysisResultSchema.parse(result);
+
+    // 이미지 모드에서 모델이 메시지 내용을 전혀 판독하지 못한 경우
+    // (extractedText가 빈 문자열) 판정을 그대로 내보내지 않는다 —
+    // 시스템 프롬프트(systemPrompt.ts)가 이 경우 빈 문자열을 반환하도록
+    // 지시하지만, 이는 프롬프트 지시일 뿐 보장이 아니므로 라우트 경계에서
+    // 한 번 더 강제한다.
+    if (parsedInput.data.type === 'image' && validatedResult.extractedText === '') {
+      return NextResponse.json(
+        { error: '스크린샷에서 메시지를 읽을 수 없습니다. 메시지가 선명하게 보이는 스크린샷인지 확인해주세요.' },
+        { status: 422 },
+      );
+    }
+
     return NextResponse.json(validatedResult);
   } catch {
     // Deliberately no console.error(err) with the caught error object here —
