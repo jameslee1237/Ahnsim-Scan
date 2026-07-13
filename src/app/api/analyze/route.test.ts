@@ -104,9 +104,10 @@ describe('POST /api/analyze', () => {
     vi.mocked(analyzeMessage).mockResolvedValue({
       verdict: '위험',
       riskScore: 88,
-      redFlags: ['긴급성 조성'],
+      redFlags: [{ flag: '긴급성 조성', evidence: '즉시 확인' }],
       explanation: '설명',
       recommendedAction: '조치',
+      extractedText: '',
     });
     const res = await POST(makeRequest(validSmsPayload));
     expect(res.status).toBe(200);
