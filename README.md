@@ -6,12 +6,14 @@
 
 ✅ v1 complete and deployed. Full analysis pipeline (Gemini primary, Groq fallback on quota exhaustion), rate limiting, quota guard, bot verification, and the full UI.
 
+✅ v2 adds screenshot upload (1-5 images) as a third input mode alongside SMS/email text — a single multimodal LLM call transcribes and analyzes the image in one pass. Gemini flash-lite handles images directly on the primary path; Groq's Llama 4 Scout is the image-capable fallback, distinct from the existing text-only `gpt-oss-20b` fallback used for SMS/email. No new environment variables were introduced.
+
 - [Design spec](docs/superpowers/specs/2026-07-07-korean-scam-detector-design.md) — architecture, detection approach, security/privacy decisions
 - [Implementation plan](docs/superpowers/plans/2026-07-07-korean-scam-detector-plan.md) — TDD task breakdown for v1
 
 ## Stack
 
-Next.js 16 (App Router, Route Handlers only, no separate backend), Tailwind CSS, shadcn/ui, Zod, Google Gemini API (free tier) as the primary detection provider with Groq (free tier) as an automatic fallback when Gemini's daily quota is exhausted, Upstash Redis for rate limiting, Cloudflare Turnstile for bot protection. See the design spec for the full rationale, including the planned migration path to Claude Sonnet 5 as the service grows.
+Next.js 16 (App Router, Route Handlers only, no separate backend), Tailwind CSS, shadcn/ui, Zod, Google Gemini API (free tier) as the primary detection provider with Groq (free tier) as an automatic fallback when Gemini's daily quota is exhausted, Upstash Redis for rate limiting, Cloudflare Turnstile for bot protection. SMS/email text and screenshot images (up to 5 per submission) share this same provider pipeline — Gemini flash-lite and Groq's Llama 4 Scout both handle images multimodally, transcribing and analyzing in a single call. See the design spec for the full rationale, including the planned migration path to Claude Sonnet 5 as the service grows.
 
 ## Setup
 
