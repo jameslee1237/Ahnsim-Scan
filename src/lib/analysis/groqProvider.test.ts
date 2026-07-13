@@ -54,7 +54,7 @@ describe('analyzeWithGroq', () => {
     expect(typeof call.messages[1].content).toBe('string');
   });
 
-  it('uses the Llama 4 Scout model with non-strict json_object mode for image input', async () => {
+  it('uses the Llama 4 Scout model with a non-strict json_schema hint for image input', async () => {
     createMock.mockResolvedValue(
       mockChatResponse({ ...validResponse, extractedText: '발신: 010-0000-0000\n택배 도착' }),
     );
@@ -63,7 +63,9 @@ describe('analyzeWithGroq', () => {
 
     const call = createMock.mock.calls[0][0];
     expect(call.model).toBe('meta-llama/llama-4-scout-17b-16e-instruct');
-    expect(call.response_format).toEqual({ type: 'json_object' });
+    expect(call.response_format.type).toBe('json_schema');
+    expect(call.response_format.json_schema.strict).toBeUndefined();
+    expect(call.response_format.json_schema.schema).toBeDefined();
     expect(call.reasoning_effort).toBeUndefined();
   });
 

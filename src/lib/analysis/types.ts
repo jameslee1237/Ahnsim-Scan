@@ -114,7 +114,14 @@ export type RedFlag = z.infer<typeof RedFlagSchema>;
 export const AnalysisResultSchema = z
   .object({
     verdict: z.enum(['안전', '의심', '위험']),
-    riskScore: z.number().int().min(0).max(100),
+    // z.coerce.number()로 숫자 문자열("90")도 받아들인다 — Groq gpt-oss가
+    // 0.92(0-1 비율)를 반환한 전례에 이어, Llama 4 Scout(비-strict
+    // json_schema 모드)가 riskScore를 숫자가 아닌 문자열로 반환하는 경우도
+    // 실제 API 호출로 확인되었다(2026-07-14). 두 사례 모두 "모델이 스스로의
+    // 스키마 지시를 완벽히 따르지 않을 수 있다"는 같은 종류의 문제이므로,
+    // 여기서 한 번 더 방어한다. Number(true/null/{}) 같은 진짜 잘못된 값은
+    // NaN이 되어 이어지는 .int() 검사에서 여전히 걸러진다.
+    riskScore: z.coerce.number().int().min(0).max(100),
     redFlags: z.array(RedFlagSchema),
     explanation: z.string(),
     recommendedAction: z.string(),
