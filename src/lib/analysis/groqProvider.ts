@@ -15,11 +15,17 @@ import { SYSTEM_PROMPT, buildUserContent } from './systemPrompt';
 // Groq only support best-effort (non-strict) JSON mode.
 const TEXT_MODEL_NAME = 'openai/gpt-oss-20b';
 // Llama 4 Scout: Groq 무료 티어에서 이미지 입력을 지원하는 멀티모달 모델.
-// strict structured output을 지원하지 않고 json_object(비-strict) 모드만
-// 지원하므로 스키마 준수는 AnalysisResultSchema.parse()의 사후 검증에
-// 의존한다 — SYSTEM_PROMPT가 flag/evidence 구조와 extractedText 규칙을
-// 이미 명시적으로 요구하고 있어 이를 보완한다. Groq 문서 기준 요청당 이미지
-// 최대 5장, base64 이미지 총합 최대 4MB(디코딩 기준) — types.ts의
+// strict structured output을 지원하지 않는다. 실제 API 호출로 확인한 결과
+// (2026-07-14), bare `{ type: 'json_object' }`로는 이 스키마(6개 필드,
+// redFlags 중첩 배열 포함)에 대해 재현 가능하게 실패했다 — riskScore가
+// 숫자가 아닌 문자열("90")로 오고, explanation/recommendedAction 필드가
+// 통째로 누락되는 경우가 3/3 재현되었다. 같은 스키마를 `{ type:
+// 'json_schema', json_schema: { schema } }`로 (strict 없이) 전달하면
+// 3/3 모두 올바른 타입과 전체 필드로 응답했다 — strict 모드는 지원하지
+// 않아도 스키마 힌트 자체는 응답 형식을 크게 개선한다. 그래도 완전한
+// 보장은 아니므로 스키마 준수의 최종 방어선은 여전히
+// AnalysisResultSchema.parse()의 사후 검증이다. Groq 문서 기준 요청당
+// 이미지 최대 5장, base64 이미지 총합 최대 4MB(디코딩 기준) — types.ts의
 // MAX_IMAGES/MAX_TOTAL_IMAGES_DATA_URL_LENGTH가 이 한도에 맞춰져 있다.
 //
 // 이 모델명과 이미지 관련 한도는 2026-07-13 시점 Groq의 모델 카탈로그/
@@ -125,16 +131,18 @@ export const analyzeWithGroq = async (input: AnalysisInput): Promise<AnalysisRes
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userContent },
     ],
-    response_format: isImage
-      ? { type: 'json_object' }
-      : {
-          type: 'json_schema',
-          json_schema: {
-            name: 'analysis_result',
-            strict: true,
-            schema: ANALYSIS_RESULT_JSON_SCHEMA,
-          },
-        },
+    // 이미지(Scout) 분기는 strict를 지원하지 않지만, 스키마 힌트 자체는
+    // bare json_object보다 훨씬 안정적인 결과를 낸다(위 IMAGE_MODEL_NAME
+    // 주석 참고) — 그래서 strict 여부만 다르고 스키마는 두 분기가 동일하게
+    // 공유한다.
+    response_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'analysis_result',
+        ...(isImage ? {} : { strict: true }),
+        schema: ANALYSIS_RESULT_JSON_SCHEMA,
+      },
+    },
   });
 
   const text = response.choices[0]?.message.content;
