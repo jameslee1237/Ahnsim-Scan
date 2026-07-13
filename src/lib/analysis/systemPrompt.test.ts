@@ -37,6 +37,15 @@ describe('buildUserContent', () => {
     expect(openIndex).toBeLessThan(bodyIndex);
     expect(bodyIndex).toBeLessThan(closeIndex);
   });
+
+  it('returns an instruction string (not image bytes) for image input, mentioning the image count', () => {
+    const content = buildUserContent({
+      type: 'image',
+      images: ['data:image/jpeg;base64,AAAA', 'data:image/jpeg;base64,BBBB'],
+    });
+    expect(content).toContain('2장');
+    expect(content).not.toContain('data:image');
+  });
 });
 
 describe('SYSTEM_PROMPT', () => {
@@ -47,6 +56,20 @@ describe('SYSTEM_PROMPT', () => {
 
   it('instructs the model to flag injection attempts as a red flag', () => {
     expect(SYSTEM_PROMPT).toContain('redFlags');
+  });
+
+  it('instructs the model to transcribe images into extractedText before analyzing, and to leave it empty otherwise', () => {
+    expect(SYSTEM_PROMPT).toContain('extractedText');
+    expect(SYSTEM_PROMPT).toContain('빈 문자열로');
+  });
+
+  it('instructs the model to structure each red flag as a flag/evidence pair quoting the original text verbatim', () => {
+    expect(SYSTEM_PROMPT).toContain('evidence');
+    expect(SYSTEM_PROMPT).toContain('그대로 인용');
+  });
+
+  it('extends the injection-defense instruction to text visible inside images', () => {
+    expect(SYSTEM_PROMPT).toContain('이미지 안에');
   });
 
   it('instructs the model to treat family/acquaintance impersonation as its own strong signal, not just institutional impersonation', () => {
@@ -76,7 +99,7 @@ describe('SYSTEM_PROMPT', () => {
   });
 
   it('instructs the model not to fabricate red flags with no textual basis (e.g. "implicit" urgency)', () => {
-    expect(SYSTEM_PROMPT).toContain('실제로 존재하는 문구나 패턴에 근거해야 합니다');
+    expect(SYSTEM_PROMPT).toContain('실제로 존재하는 정확한 문구');
     expect(SYSTEM_PROMPT).toContain('가능성을 배제할 수 없다');
     expect(SYSTEM_PROMPT).toContain('암시적');
   });
