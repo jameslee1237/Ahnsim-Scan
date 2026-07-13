@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import path from 'path';
 
 export default defineConfig({
@@ -9,6 +9,12 @@ export default defineConfig({
     // runs `npm test` before any test files exist; every task from Task 2
     // onward adds real tests, so this only matters for that one moment.
     passWithNoTests: true,
+    // .claude/worktrees/ holds full nested checkouts of this repo (used for
+    // isolated agent work) — without this exclude, Vitest's default recursive
+    // glob finds and runs every *.test.ts file inside them too, alongside the
+    // real ones, silently duplicating (and sometimes contradicting, if a
+    // worktree's code is mid-edit or stale) the actual suite.
+    exclude: [...configDefaults.exclude, '.claude/worktrees/**'],
   },
   resolve: {
     alias: {

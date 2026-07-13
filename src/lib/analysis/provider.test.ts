@@ -24,6 +24,7 @@ const validResult = {
   redFlags: [],
   explanation: '정상적인 메시지입니다.',
   recommendedAction: '별도 조치가 필요하지 않습니다.',
+  extractedText: '',
 };
 
 describe('analyzeMessage', () => {

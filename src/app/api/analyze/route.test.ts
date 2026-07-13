@@ -35,6 +35,12 @@ const validSmsPayload = {
   turnstileToken: 'ok',
 };
 
+const validImagePayload = {
+  type: 'image',
+  images: ['data:image/jpeg;base64,AAAA'],
+  turnstileToken: 'ok',
+};
+
 describe('POST /api/analyze', () => {
   beforeEach(() => {
     // 이전 테스트의 호출 기록이 남아있으면 "호출되지 않아야 한다" 류의 단언이
@@ -104,9 +110,10 @@ describe('POST /api/analyze', () => {
     vi.mocked(analyzeMessage).mockResolvedValue({
       verdict: '위험',
       riskScore: 88,
-      redFlags: ['긴급성 조성'],
+      redFlags: [{ flag: '긴급성 조성', evidence: '즉시 확인' }],
       explanation: '설명',
       recommendedAction: '조치',
+      extractedText: '',
     });
     const res = await POST(makeRequest(validSmsPayload));
     expect(res.status).toBe(200);
@@ -153,5 +160,46 @@ describe('POST /api/analyze', () => {
     vi.mocked(analyzeMessage).mockResolvedValue({ verdict: '알수없음', riskScore: 5 });
     const res = await POST(makeRequest(validSmsPayload));
     expect(res.status).toBe(500);
+  });
+
+  it('returns 422 when image input analysis comes back with empty extractedText', async () => {
+    vi.mocked(analyzeMessage).mockResolvedValue({
+      verdict: '안전',
+      riskScore: 5,
+      redFlags: [],
+      explanation: '설명',
+      recommendedAction: '조치',
+      extractedText: '',
+    });
+    const res = await POST(makeRequest(validImagePayload));
+    expect(res.status).toBe(422);
+    const data = await res.json();
+    expect(data.error).toContain('읽을 수 없습니다');
+  });
+
+  it('does not apply the empty-extractedText check to text input', async () => {
+    vi.mocked(analyzeMessage).mockResolvedValue({
+      verdict: '안전',
+      riskScore: 5,
+      redFlags: [],
+      explanation: '설명',
+      recommendedAction: '조치',
+      extractedText: '',
+    });
+    const res = await POST(makeRequest(validSmsPayload));
+    expect(res.status).toBe(200);
+  });
+
+  it('returns the result normally for image input when extractedText is non-empty', async () => {
+    vi.mocked(analyzeMessage).mockResolvedValue({
+      verdict: '위험',
+      riskScore: 90,
+      redFlags: [{ flag: '긴급성 조성', evidence: '즉시 확인' }],
+      explanation: '설명',
+      recommendedAction: '조치',
+      extractedText: '발신: 010-0000-0000\n택배 도착',
+    });
+    const res = await POST(makeRequest(validImagePayload));
+    expect(res.status).toBe(200);
   });
 });
