@@ -2,35 +2,139 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make 안심스캔 installable as a PWA on Android and register it as a system share target, so a user can share a KakaoTalk/SMS message or a gallery screenshot directly to the app instead of manually copying/uploading — with an inline guide explaining this (and that iOS isn't supported) on the home page.
+**Goal:** Make 안심스캔 installable as a PWA on Android (with an in-app install button) and register it as a system share target, so a user can share a KakaoTalk/SMS message or a gallery screenshot directly to the app — with shared text analyzable without a sender number, and an inline guide explaining install/usage/limits (and that iOS isn't supported).
 
-**Architecture:** A `manifest.json` + app icons make the app installable and declare `share_target`. A thin Service Worker (`public/sw.js`) intercepts the resulting `POST /share-target` request, stores the shared text/image in the browser's own Cache Storage API (never touching the server), and redirects to `/?shared=1`. The home page reads it back on load, downscales shared images through the existing `downscaleImage()` pipeline (shared images aren't pre-downscaled the way uploads are), and passes it into `AnalyzeForm` via a new `initialShared` prop. A server-side fallback route (`src/app/share-target/route.ts`) handles the rare case where a share arrives before the Service Worker has activated, using a short-lived cookie instead of any storage.
+**Architecture:** A `manifest.json` + icons + a thin `public/sw.js` service worker make the app installable and let it intercept the `POST /share-target` request, storing shared text as JSON and images as raw `Blob`s in the browser's Cache Storage (never touching the server), then redirecting to `/?shared=1`. The home page reads it back on load, runs shared images through the existing `downscaleImage()` pipeline, and seeds `AnalyzeForm` via a new `initialShared` prop. A server-side fallback route handles the rare pre-service-worker-activation window via a short-lived cookie. `SmsInputSchema.senderNumber` is relaxed so shared (sender-less) text analyzes on click. An `InstallButton` uses `beforeinstallprompt` for a real in-app install control.
 
-**Tech Stack:** Same as existing (Next.js 16, TypeScript, Tailwind v4) — no new dependencies. Icons generated locally via `qlmanage`/`sips` (both macOS built-ins) as static assets checked into `public/icons/`.
+**Tech Stack:** Same as existing (Next.js 16.2.10, TypeScript, Tailwind v4, Zod, Vitest) — no new dependencies. Icons generated locally via `qlmanage` + `sips` (macOS built-ins) as static assets in `public/icons/`.
 
 **Reference spec:** `docs/superpowers/specs/2026-07-15-pwa-share-target-design.md`
 
 **Branch:** Cut from `develop` per `AGENTS.md`.
 
+**Out of scope (follow-on):** A service-wide `frontend-design` visual overhaul is a separate design cycle after this ships (spec §11). This plan styles the new UI with existing components only.
+
 ---
 
-## Task 1: App icons + manifest.json
+## Task 1: Relax `senderNumber` so shared text analyzes without it
+
+**Files:**
+- Modify: `src/lib/analysis/types.ts`
+- Modify: `src/lib/analysis/systemPrompt.ts`
+- Test: `src/lib/analysis/types.test.ts`, `src/lib/analysis/systemPrompt.test.ts`
+
+Shared KakaoTalk/SMS text carries no sender number. The SMS schema currently requires one (`z.string().min(1)`), so the share flow would dead-end at a 400. This task removes that requirement. Independent of all other tasks; do it first.
+
+- [ ] **Step 1: Write the failing tests**
+
+Add to `src/lib/analysis/types.test.ts` inside the `describe('AnalysisInputSchema', ...)` block:
+
+```ts
+  it('accepts sms input with an empty senderNumber (shared text has no sender)', () => {
+    const result = AnalysisInputSchema.safeParse({
+      type: 'sms',
+      senderNumber: '',
+      messageBody: '엄마 나 폰 액정 깨져서 이 번호로 문자해',
+    });
+    expect(result.success).toBe(true);
+  });
+```
+
+Add to `src/lib/analysis/systemPrompt.test.ts` inside the `describe('buildUserContent', ...)` block:
+
+```ts
+  it('renders "(알 수 없음)" when the sms senderNumber is empty', () => {
+    const content = buildUserContent({
+      type: 'sms',
+      senderNumber: '',
+      messageBody: '엄마 나 폰 액정 깨져서 이 번호로 문자해',
+    });
+    expect(content).toContain('발신번호: (알 수 없음)');
+  });
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npx vitest run src/lib/analysis/types.test.ts src/lib/analysis/systemPrompt.test.ts`
+Expected: the two new tests FAIL — the schema rejects empty `senderNumber`, and `buildUserContent` renders `발신번호: ` (empty), not `(알 수 없음)`.
+
+- [ ] **Step 3: Relax the schema in `src/lib/analysis/types.ts`**
+
+Replace:
+
+```ts
+export const SmsInputSchema = z.object({
+  type: z.literal('sms'),
+  senderNumber: z.string().min(1).max(50),
+  messageBody: z.string().min(5).max(MAX_INPUT_LENGTH),
+});
+```
+
+with:
+
+```ts
+export const SmsInputSchema = z.object({
+  type: z.literal('sms'),
+  // 발신번호는 선택값이다 — 공유(카카오톡/문자)로 받은 텍스트에는 본문만
+  // 있고 발신번호가 없으므로 빈 문자열을 허용한다. 발신번호 스푸핑은 여러
+  // 신호 중 하나일 뿐이고, 시스템 프롬프트는 본문만으로도 판정하도록
+  // 설계되어 있다(예: 가족 사칭은 발신 정보가 없어도 강한 위험 신호).
+  senderNumber: z.string().max(50),
+  messageBody: z.string().min(5).max(MAX_INPUT_LENGTH),
+});
+```
+
+- [ ] **Step 4: Handle empty sender in `src/lib/analysis/systemPrompt.ts`**
+
+In `buildUserContent`, replace the sms branch's sender line:
+
+```ts
+      `발신번호: ${input.senderNumber}`,
+```
+
+with:
+
+```ts
+      `발신번호: ${input.senderNumber || '(알 수 없음)'}`,
+```
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `npx vitest run src/lib/analysis/types.test.ts src/lib/analysis/systemPrompt.test.ts`
+Expected: PASS (including the two new tests).
+
+- [ ] **Step 6: Run the full suite, tsc, and lint**
+
+Run: `pnpm test && npx tsc --noEmit && pnpm lint`
+Expected: full suite green, zero type errors, lint clean.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/lib/analysis/types.ts src/lib/analysis/systemPrompt.ts src/lib/analysis/types.test.ts src/lib/analysis/systemPrompt.test.ts
+git commit -m "feat: allow empty sms senderNumber so shared text analyzes without it"
+```
+
+---
+
+## Task 2: App icons + manifest + layout wiring
 
 **Files:**
 - Create: `public/icons/icon-192.png`, `public/icons/icon-512.png`, `public/icons/icon-maskable-192.png`, `public/icons/icon-maskable-512.png`
 - Create: `public/manifest.json`
+- Modify: `src/app/layout.tsx`
 
-No automated test — these are static assets, verified manually (Task 7) via Chrome DevTools' Installability check.
+No automated test — static assets, verified manually in Task 8 via Chrome DevTools.
 
-- [ ] **Step 1: Generate the icon source images**
+- [ ] **Step 1: Author the icon source HTML**
 
-Create a temporary HTML file (not committed — used only to rasterize the icon, delete it after Step 2) at e.g. `/tmp/icon-source/icon.html`:
+Create a temporary file (NOT committed; deleted in Step 2) at `$CLAUDE_JOB_DIR/tmp/icon-src/icon.html`:
 
 ```html
 <!DOCTYPE html>
 <html>
 <head><style>
-  body { margin: 0; }
+  html, body { margin: 0; padding: 0; }
   .icon { width: 512px; height: 512px; background: #1a56db; display: flex; align-items: center; justify-content: center; }
   svg { width: 60%; height: 60%; }
 </style></head>
@@ -45,32 +149,41 @@ Create a temporary HTML file (not committed — used only to rasterize the icon,
 </html>
 ```
 
-And a second file at `/tmp/icon-source/icon-maskable.html` — identical except `svg { width: 45%; height: 45%; }` (smaller, to leave safe-zone padding so Android's adaptive-icon mask doesn't clip the shield when it crops to a circle/squircle).
+And `$CLAUDE_JOB_DIR/tmp/icon-src/icon-maskable.html` — identical except `svg { width: 45%; height: 45%; }` (smaller, so Android's adaptive-icon mask, which crops to the inner ~80% circle, doesn't clip the shield).
 
 - [ ] **Step 2: Rasterize with `qlmanage`, resize with `sips`**
 
+`sips` cannot rasterize SVG/HTML directly, so `qlmanage` (QuickLook) produces the PNG first, then `sips` resizes.
+
 ```bash
 mkdir -p public/icons
-qlmanage -t -s 512 -o /tmp/icon-source /tmp/icon-source/icon.html
-qlmanage -t -s 512 -o /tmp/icon-source /tmp/icon-source/icon-maskable.html
+SRC="$CLAUDE_JOB_DIR/tmp/icon-src"
+qlmanage -t -s 1024 -o "$SRC" "$SRC/icon.html"
+qlmanage -t -s 1024 -o "$SRC" "$SRC/icon-maskable.html"
 
-sips -z 512 512 /tmp/icon-source/icon.html.png --out public/icons/icon-512.png
-sips -z 192 192 /tmp/icon-source/icon.html.png --out public/icons/icon-192.png
-sips -z 512 512 /tmp/icon-source/icon-maskable.html.png --out public/icons/icon-maskable-512.png
-sips -z 192 192 /tmp/icon-source/icon-maskable.html.png --out public/icons/icon-maskable-192.png
+sips -z 512 512 "$SRC/icon.html.png"          --out public/icons/icon-512.png
+sips -z 192 192 "$SRC/icon.html.png"          --out public/icons/icon-192.png
+sips -z 512 512 "$SRC/icon-maskable.html.png" --out public/icons/icon-maskable-512.png
+sips -z 192 192 "$SRC/icon-maskable.html.png" --out public/icons/icon-maskable-192.png
 
-rm -rf /tmp/icon-source
+rm -rf "$SRC"
 ```
 
-Verify all four PNGs exist and open at the expected sizes: `file public/icons/*.png`.
+- [ ] **Step 3: Verify the icons visually**
 
-- [ ] **Step 3: Create `public/manifest.json`**
+Run: `file public/icons/*.png` and open them (e.g. `open public/icons/icon-512.png`).
+Expected: each is a PNG at exactly its named size, background is opaque `#1a56db`, and the white shield is centered (the maskable variants have more padding). `qlmanage`'s HTML rendering varies across macOS versions — if any icon is the wrong size, transparent, or off-center, regenerate via another method (e.g. Chrome headless `--screenshot`). These are one-time committed assets, not CI-generated, so any method that yields correct PNGs is acceptable.
+
+- [ ] **Step 4: Create `public/manifest.json`**
 
 ```json
 {
+  "id": "/",
   "name": "안심스캔",
   "short_name": "안심스캔",
   "description": "문자, 이메일, 스크린샷이 사기인지 AI로 확인하세요.",
+  "lang": "ko",
+  "dir": "ltr",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -97,18 +210,21 @@ Verify all four PNGs exist and open at the expected sizes: `file public/icons/*.
 }
 ```
 
-- [ ] **Step 4: Link the manifest from `src/app/layout.tsx`**
+- [ ] **Step 5: Link the manifest + theme-color from `src/app/layout.tsx`**
 
-Modify the `metadata` export and add a `viewport` export — replace:
+In `src/app/layout.tsx`, change the type-only import:
 
 ```ts
-export const metadata: Metadata = {
-  title: '스미싱/피싱 확인 서비스',
-  description: '문자와 이메일이 사기인지 AI로 확인하세요.',
-};
+import type { Metadata } from 'next';
 ```
 
-with:
+to:
+
+```ts
+import type { Metadata, Viewport } from 'next';
+```
+
+Add `manifest` to the existing `metadata` export and add a new `viewport` export directly below it (Next 16: a `public/manifest.json` needs the explicit `metadata.manifest` link, and `themeColor` must live in `viewport`, not `metadata`):
 
 ```ts
 export const metadata: Metadata = {
@@ -122,30 +238,29 @@ export const viewport: Viewport = {
 };
 ```
 
-And add `Viewport` to the type-only import at the top of the file — replace `import type { Metadata } from 'next';` with `import type { Metadata, Viewport } from 'next';`.
-
-- [ ] **Step 5: Verify the build picks this up**
+- [ ] **Step 6: Verify the build emits the tags**
 
 Run: `pnpm build`
-Expected: succeeds; then run `pnpm dev`, open `http://localhost:3000`, check the page source or DevTools' Elements tab for `<link rel="manifest" href="/manifest.json">` and `<meta name="theme-color" content="#1a56db">` in `<head>`.
+Expected: succeeds. Then `pnpm dev`, open `http://localhost:3000`, and confirm in DevTools' Elements → `<head>` that both `<link rel="manifest" href="/manifest.json">` and `<meta name="theme-color" content="#1a56db">` are present, and that `/manifest.json` loads (Application → Manifest, no errors).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add public/icons public/manifest.json src/app/layout.tsx
-git commit -m "feat: add PWA manifest and app icons"
+git commit -m "feat: add PWA manifest, icons, and theme-color"
 ```
 
 ---
 
-## Task 2: Service worker + registration
+## Task 3: Service worker + registration + cache headers
 
 **Files:**
 - Create: `public/sw.js`
 - Create: `src/components/ServiceWorkerRegistration.tsx`
 - Modify: `src/app/layout.tsx`
+- Modify: `next.config.ts`
 
-No automated test — Service Workers can't run in Vitest's Node environment (same reasoning as `imageDownscale.ts`/`ImageUploader.tsx` having no Vitest coverage). Verified manually in Task 7.
+No automated test — service workers can't run in Vitest's Node environment (same convention as `imageDownscale.ts`). Verified manually in Task 8.
 
 - [ ] **Step 1: Create `public/sw.js`**
 
@@ -156,43 +271,67 @@ No automated test — Service Workers can't run in Vitest's Node environment (sa
 // 그대로 네트워크로 통과시킨다 — 오프라인 캐싱/프리캐싱은 하지 않는다.
 
 const SHARE_CACHE_NAME = 'shared-content';
-const SHARE_CACHE_KEY = '/shared-payload';
+const META_KEY = '/shared-meta';
+const MAX_SHARED_IMAGES = 5;
+const imageKey = (i) => `/shared-image-${i}`;
 
-// 서비스 워커 전역 범위에는 FileReader가 없다 — Blob.arrayBuffer()와
-// btoa()(둘 다 서비스 워커에서 사용 가능)로 직접 base64 data URL을 만든다.
-const fileToDataUrl = async (file) => {
-  const buffer = await file.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+// 일부 공유 앱은 텍스트를 text가 아니라 url/title에 담는다 — 순서대로 찾는다.
+const pickText = (formData) => {
+  for (const field of ['text', 'url', 'title']) {
+    const value = formData.get(field);
+    if (typeof value === 'string' && value.trim().length > 0) return value;
   }
-  const base64 = btoa(binary);
-  return `data:${file.type};base64,${base64}`;
+  return null;
 };
 
 const handleShareTarget = async (event) => {
-  const formData = await event.request.formData();
-  const text = formData.get('text');
-  const files = formData.getAll('images').filter((entry) => entry instanceof File && entry.size > 0);
+  const cache = await caches.open(SHARE_CACHE_NAME);
 
-  // 캡션이 있는 사진 공유처럼 텍스트와 이미지가 동시에 오는 경우, 이미지를
-  // 우선한다 — 이미지 분석이 어차피 전체 내용을 판독하고, 텍스트만으로는
-  // 스크린샷 없이 캡션만 분석하는 것이 무의미하다.
-  let payload = null;
-  if (files.length > 0) {
-    const images = await Promise.all(files.map(fileToDataUrl));
-    payload = { type: 'image', images };
-  } else if (typeof text === 'string' && text.trim().length > 0) {
-    payload = { type: 'sms', text };
+  // 이전 공유 잔여물을 먼저 비운다 — 마지막 공유만 유효하다.
+  const staleKeys = await cache.keys();
+  await Promise.all(staleKeys.map((key) => cache.delete(key)));
+
+  let meta = null;
+  try {
+    const formData = await event.request.formData();
+    const files = formData
+      .getAll('images')
+      .filter((entry) => entry instanceof File && entry.size > 0);
+
+    // 캡션이 있는 사진 공유처럼 텍스트와 이미지가 함께 오면 이미지를
+    // 우선한다 — 이미지 분석이 전체 내용을 판독하므로.
+    if (files.length > 0) {
+      const capped = files.slice(0, MAX_SHARED_IMAGES);
+      // base64로 변환하지 않고 Blob 그대로 저장한다 — 원본이 수 MB일 수
+      // 있어 인코딩 비용/저장 용량이 크다. Response가 MIME 타입을 보존한다.
+      await Promise.all(
+        capped.map((file, i) =>
+          cache.put(
+            imageKey(i),
+            new Response(file, {
+              headers: { 'content-type': file.type || 'application/octet-stream' },
+            }),
+          ),
+        ),
+      );
+      meta = { type: 'image', count: capped.length };
+    } else {
+      const text = pickText(formData);
+      if (text) meta = { type: 'sms', text };
+    }
+  } catch {
+    meta = null;
   }
 
-  if (payload) {
-    const cache = await caches.open(SHARE_CACHE_NAME);
-    await cache.put(SHARE_CACHE_KEY, new Response(JSON.stringify(payload)));
+  if (meta) {
+    await cache.put(
+      META_KEY,
+      new Response(JSON.stringify(meta), { headers: { 'content-type': 'application/json' } }),
+    );
   }
 
-  return Response.redirect('/?shared=1', 303);
+  // 상대 URL은 구현에 따라 TypeError를 던진 전례가 있어 절대 URL로 통일한다.
+  return Response.redirect(new URL('/?shared=1', self.location.origin).href, 303);
 };
 
 self.addEventListener('fetch', (event) => {
@@ -219,14 +358,15 @@ self.addEventListener('activate', (event) => {
 
 import { useEffect } from 'react';
 
-// 서비스 워커는 PWA 설치 요건 충족과 공유 대상(share target) 요청 가로채기,
-// 두 가지 역할만 담당한다 — 오프라인 캐싱은 하지 않는다. 등록 자체가
-// 실패해도(구형 브라우저, 프라이빗 모드 등) 앱의 핵심 기능(수동 입력/업로드)
-// 은 전혀 영향받지 않으므로 실패를 조용히 무시한다.
+// 서비스 워커는 PWA 설치 요건 충족과 공유 대상 요청 가로채기만 담당한다 —
+// 오프라인 캐싱은 하지 않는다. 등록 실패(구형 브라우저, 프라이빗 모드 등)는
+// 앱의 핵심 기능(수동 입력/업로드)에 영향이 없으므로 조용히 무시한다.
+// updateViaCache: 'none'은 sw.js 자체가 HTTP 캐시에서 서빙되어 업데이트가
+// 지연되는 것을 막는다.
 export const ServiceWorkerRegistration = () => {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => {});
   }, []);
 
   return null;
@@ -235,11 +375,13 @@ export const ServiceWorkerRegistration = () => {
 
 - [ ] **Step 3: Render it from `src/app/layout.tsx`**
 
-Add the import alongside the other component-ish imports, and render it as the first child of `<body>`:
+Add the import:
 
 ```tsx
 import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration';
 ```
+
+and render it as the first child of `<body>`:
 
 ```tsx
       <body className="antialiased">
@@ -248,34 +390,67 @@ import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistratio
       </body>
 ```
 
-- [ ] **Step 4: Verify with `tsc`/lint (no runtime test possible here)**
+- [ ] **Step 4: Add cache headers for `/sw.js` in `next.config.ts`**
 
-Run: `npx tsc --noEmit && pnpm lint`
-Expected: both clean. `sw.js` is plain JS served as a static file, not compiled/linted by the TypeScript/ESLint pipeline — that's expected and fine.
+Add a `headers()` function to the existing `nextConfig` object (keep the existing `turbopack` key):
 
-- [ ] **Step 5: Commit**
+```ts
+const nextConfig: NextConfig = {
+  turbopack: {
+    root: path.join(__dirname),
+  },
+  // 서비스 워커 스크립트는 항상 최신본을 받아 업데이트가 즉시 전파되도록
+  // 캐시를 끈다. public/의 기본 Cache-Control(max-age=0)만으로는 부족하다.
+  async headers() {
+    return [
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
+        ],
+      },
+    ];
+  },
+};
+```
+
+- [ ] **Step 5: Verify tsc/lint/build (no runtime SW test possible)**
+
+Run: `npx tsc --noEmit && pnpm lint && pnpm build`
+Expected: all clean. `sw.js` is a static file, not compiled/linted by the TS/ESLint pipeline — expected.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add public/sw.js src/components/ServiceWorkerRegistration.tsx src/app/layout.tsx
-git commit -m "feat: add service worker for PWA installability and share-target interception"
+git add public/sw.js src/components/ServiceWorkerRegistration.tsx src/app/layout.tsx next.config.ts
+git commit -m "feat: add service worker for installability and share-target interception"
 ```
 
 ---
 
-## Task 3: `AnalyzeForm` — accept shared content
+## Task 4: `AnalyzeForm` — accept shared content
 
 **Files:**
 - Modify: `src/components/AnalyzeForm.tsx`
 
-No test file (matches this component's existing convention — no Vitest coverage, verified manually).
+No test file (matches this component's existing convention). Compiles standalone — the new prop is optional and unused until Task 6.
 
-- [ ] **Step 1: Read the current `src/components/AnalyzeForm.tsx` first** to confirm it matches the shape described below (it should — nothing in Tasks 1-2 touched it). If it differs substantially, stop and report the discrepancy rather than guessing.
+- [ ] **Step 1: Add `useEffect` to the React import**
 
-- [ ] **Step 2: Add the `useEffect` import**
+Replace:
 
-Replace `import { useRef, useState } from 'react';` with `import { useEffect, useRef, useState } from 'react';`.
+```tsx
+import { useRef, useState } from 'react';
+```
 
-- [ ] **Step 3: Extend the props interface**
+with:
+
+```tsx
+import { useEffect, useRef, useState } from 'react';
+```
+
+- [ ] **Step 2: Export a `SharedContent` type and extend the props**
 
 Replace:
 
@@ -288,7 +463,10 @@ interface IAnalyzeFormProps {
 with:
 
 ```tsx
-export type SharedContent = { type: 'sms'; messageBody: string } | { type: 'image'; images: string[] };
+// page.tsx가 이 타입을 import해 재사용한다 — 한 곳에서만 정의한다.
+export type SharedContent =
+  | { type: 'sms'; messageBody: string }
+  | { type: 'image'; images: string[] };
 
 interface IAnalyzeFormProps {
   onResult: (result: AnalysisResult, displayText: string) => void;
@@ -296,9 +474,7 @@ interface IAnalyzeFormProps {
 }
 ```
 
-`SharedContent` is exported here (not redeclared in `page.tsx`) — Task 4's `page.tsx` imports it from this file rather than defining its own copy.
-
-- [ ] **Step 4: Accept the new prop and seed state from it**
+- [ ] **Step 3: Accept the prop and seed state from it**
 
 Replace:
 
@@ -312,14 +488,14 @@ with:
 export const AnalyzeForm = ({ onResult, initialShared }: IAnalyzeFormProps) => {
 ```
 
-Then, immediately after the existing `const [images, setImages] = useState<string[]>([]);` line, add:
+Immediately after the `const [images, setImages] = useState<string[]>([]);` line, add:
 
 ```tsx
 
-  // 홈페이지가 공유받은 내용(카카오톡/문자 텍스트 또는 갤러리 스크린샷)을
-  // 읽어오면 initialShared가 undefined에서 값으로 한 번 바뀐다 — 그 순간에만
-  // 해당 탭과 내용을 미리 채운다. 부모는 이 값을 다시 바꾸지 않으므로 별도
-  // 가드 없이 [initialShared]에 의존하는 effect로 충분하다.
+  // 홈페이지가 공유받은 내용을 읽어오면 initialShared가 undefined에서 값으로
+  // 한 번 바뀐다 — 그 순간에만 해당 탭과 내용을 미리 채운다. 부모는 이 값을
+  // 상태로 한 번만 세팅하므로 참조가 안정적이라 [initialShared] 의존으로 충분
+  // 하다. (공유 텍스트는 발신번호 없이도 분석 가능하도록 스키마가 완화됨.)
   useEffect(() => {
     if (!initialShared) return;
     if (initialShared.type === 'sms') {
@@ -332,12 +508,12 @@ Then, immediately after the existing `const [images, setImages] = useState<strin
   }, [initialShared]);
 ```
 
-- [ ] **Step 5: Run `tsc`/lint**
+- [ ] **Step 4: Run tsc/lint**
 
 Run: `npx tsc --noEmit && pnpm lint`
 Expected: both clean.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/components/AnalyzeForm.tsx
@@ -346,23 +522,161 @@ git commit -m "feat: let AnalyzeForm seed its state from shared content"
 
 ---
 
-## Task 4: `page.tsx` — consume shared content on load
+## Task 5: `InstallButton` + `InstallGuide`
+
+**Files:**
+- Create: `src/components/InstallButton.tsx`
+- Create: `src/components/InstallGuide.tsx`
+
+No test files (browser-only / presentational — project convention). Both compile standalone; consumed by `page.tsx` in Task 6.
+
+- [ ] **Step 1: Create `src/components/InstallButton.tsx`**
+
+```tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Download } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+// beforeinstallprompt는 표준 DOM 타입에 없어 직접 좁힌다.
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+// 브라우저가 PWA 설치 가능 조건을 만족하면 beforeinstallprompt가 발생한다.
+// 그 이벤트를 잡아 두었다가 앱 내 "홈 화면에 추가" 버튼으로 노출한다. iOS
+// Safari는 이 이벤트를 발생시키지 않으므로 iOS에서는 버튼이 나타나지 않는다.
+export const InstallButton = () => {
+  const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    // 이미 설치되어 standalone으로 실행 중이면 버튼을 띄우지 않는다.
+    if (window.matchMedia('(display-mode: standalone)').matches) return;
+
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault(); // 크롬 기본 미니 배너 억제
+      setPromptEvent(event as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => setPromptEvent(null);
+
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  if (!promptEvent) return null;
+
+  const handleInstall = async () => {
+    await promptEvent.prompt();
+    await promptEvent.userChoice;
+    setPromptEvent(null); // 프롬프트 이벤트는 한 번만 사용할 수 있다.
+  };
+
+  return (
+    <Button type="button" variant="outline" onClick={handleInstall} className="mb-3 w-full">
+      <Download className="size-4" aria-hidden="true" />
+      홈 화면에 추가
+    </Button>
+  );
+};
+```
+
+- [ ] **Step 2: Create `src/components/InstallGuide.tsx`**
+
+```tsx
+'use client';
+
+import { useState } from 'react';
+import { ChevronDown, Smartphone } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { InstallButton } from '@/components/InstallButton';
+
+// 새 shadcn 컴포넌트나 의존성을 추가하지 않는다 — 펼침/접힘은 순수 useState +
+// 조건부 렌더링으로 구현한다. 시각적 완성도는 이후 서비스 전체 frontend-design
+// 개편에서 함께 다듬는다.
+export const InstallGuide = () => {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <Alert role="note" className="mb-5 border-none bg-muted/60">
+      <Smartphone className="size-4 text-muted-foreground" aria-hidden="true" />
+      <AlertDescription>
+        <InstallButton />
+        <div className="flex items-center justify-between gap-2">
+          <span>
+            안드로이드에서 홈 화면에 추가하면 카카오톡·갤러리에서 바로 공유할 수 있어요.
+            (iOS는 지원되지 않습니다)
+          </span>
+          <button
+            type="button"
+            onClick={() => setExpanded((prev) => !prev)}
+            aria-expanded={expanded}
+            className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary"
+          >
+            자세히 보기
+            <ChevronDown
+              className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+        {expanded && (
+          <div className="mt-3 space-y-3 text-sm">
+            <ol className="list-decimal space-y-1.5 pl-4">
+              <li>위 &quot;홈 화면에 추가&quot; 버튼(또는 크롬 메뉴 ⋮ → &quot;홈 화면에 추가&quot;)으로 설치하세요.</li>
+              <li>카카오톡·문자 메시지를 길게 눌러 공유를 선택하고, 목록에서 안심스캔을 고르세요.</li>
+              <li>갤러리에서 스크린샷을 공유할 때도 안심스캔을 선택할 수 있어요.</li>
+              <li>공유한 내용은 이 화면에 자동으로 채워지며, 인증 후 분석하기를 누르면 됩니다.</li>
+            </ol>
+            <p className="text-muted-foreground">
+              무료로 운영되는 서비스라 하루 사용량에 제한이 있어요. 한도에 도달하면 &quot;오늘의 무료
+              사용량을 모두 사용했습니다&quot;라는 안내가 나타날 수 있으며, 다음 날 다시 이용할 수
+              있습니다.
+            </p>
+          </div>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
+};
+```
+
+- [ ] **Step 3: Run tsc/lint**
+
+Run: `npx tsc --noEmit && pnpm lint`
+Expected: both clean.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/components/InstallButton.tsx src/components/InstallGuide.tsx
+git commit -m "feat: add in-app install button and install/usage/limits guide"
+```
+
+---
+
+## Task 6: `page.tsx` — consume shared content on load
 
 **Files:**
 - Modify: `src/lib/imageDownscale.ts`
 - Modify: `src/app/page.tsx`
 
-Depends on Task 3 (`AnalyzeForm`'s `initialShared` prop must exist). No test file for either change (matches existing convention for both files — no Vitest coverage).
+Depends on Task 4 (`initialShared`) and Task 5 (`InstallGuide`). After this task the tree is fully wired and builds clean. No test files (existing convention for both).
 
 - [ ] **Step 1: Add `dataUrlToFile` to `src/lib/imageDownscale.ts`**
 
-Shared images arrive from the service worker as data URLs (see Task 2), not `File` objects, but `downscaleImage` takes a `File`. Add this new exported function to the file (the existing `downscaleImage` function and its private helpers stay exactly as-is):
+The cookie-fallback path (Task 7) delivers a shared image as a data URL, but `downscaleImage` takes a `File`. Add this exported helper (leave `downscaleImage` and its private helpers unchanged):
 
 ```ts
-// data URL(예: 서비스 워커가 공유받은 이미지를 저장할 때 만든 것)을 다시
-// File 객체로 되돌린다 — downscaleImage가 File을 입력으로 받으므로, 공유
-//받은 이미지도 업로드된 이미지와 동일한 다운스케일 경로를 타게 하려면
-// 먼저 File로 되돌려야 한다.
+// data URL(서버 폴백 쿠키가 실어 보낸 이미지)을 File로 되돌린다 —
+// downscaleImage가 File을 받으므로, 공유받은 이미지도 업로드 이미지와 동일한
+// 다운스케일 경로를 타게 하려면 먼저 File로 되돌려야 한다. (정상 경로의
+// 이미지는 서비스 워커가 Blob으로 저장하므로 page.tsx가 직접 File로 만든다.)
 export const dataUrlToFile = (dataUrl: string, filename: string): File => {
   const [header, base64] = dataUrl.split(',');
   const mimeMatch = header.match(/data:(.*?);base64/);
@@ -376,9 +690,7 @@ export const dataUrlToFile = (dataUrl: string, filename: string): File => {
 };
 ```
 
-- [ ] **Step 2: Read the current `src/app/page.tsx` first** to confirm it matches the shape described below (it should). If it differs, stop and report rather than guessing.
-
-- [ ] **Step 3: Replace the entire contents of `src/app/page.tsx`**
+- [ ] **Step 2: Replace the entire contents of `src/app/page.tsx`**
 
 ```tsx
 'use client';
@@ -392,29 +704,67 @@ import { ResultCard } from '@/components/ResultCard';
 import { dataUrlToFile, downscaleImage } from '@/lib/imageDownscale';
 import type { AnalysisResult } from '@/lib/analysis/types';
 
-type SharedPayload = { type: 'sms'; text: string } | { type: 'image'; images: string[] };
+// 공유 경로가 정규화한 중간 형태 — 이미지는 (Cache의 Blob이든 쿠키의 data
+// URL이든) 항상 File[]로 통일해 기존 downscaleImage 파이프라인에 넘긴다.
+type NormalizedShare = { type: 'sms'; text: string } | { type: 'image'; files: File[] };
 
+const SHARE_CACHE_NAME = 'shared-content';
 const SHARE_COOKIE_NAME = 'shared_content';
+const MAX_SHARED_IMAGES = 5;
 
-const readSharedCookie = (): SharedPayload | null => {
-  const match = document.cookie.match(/(?:^|; )shared_content=([^;]*)/);
-  if (!match) return null;
-  document.cookie = `${SHARE_COOKIE_NAME}=; Max-Age=0; path=/`;
+// 정상 경로: 서비스 워커가 Cache Storage에 남긴 메타/Blob을 읽는다.
+const readSharedFromCache = async (): Promise<NormalizedShare | null> => {
   try {
-    return JSON.parse(decodeURIComponent(match[1])) as SharedPayload;
+    const cache = await caches.open(SHARE_CACHE_NAME);
+    const metaResponse = await cache.match('/shared-meta');
+    if (!metaResponse) return null;
+
+    const meta = (await metaResponse.json()) as { type?: string; text?: string; count?: number };
+    let result: NormalizedShare | null = null;
+
+    if (meta.type === 'sms' && typeof meta.text === 'string') {
+      result = { type: 'sms', text: meta.text };
+    } else if (meta.type === 'image' && typeof meta.count === 'number') {
+      const files: File[] = [];
+      for (let i = 0; i < Math.min(meta.count, MAX_SHARED_IMAGES); i++) {
+        const imageResponse = await cache.match(`/shared-image-${i}`);
+        if (!imageResponse) continue;
+        const blob = await imageResponse.blob();
+        files.push(new File([blob], `shared-${i}`, { type: blob.type || 'image/jpeg' }));
+      }
+      if (files.length > 0) result = { type: 'image', files };
+    }
+
+    // 읽은 즉시 캐시를 비운다 — 새로고침 시 재사용되지 않도록.
+    const keys = await cache.keys();
+    await Promise.all(keys.map((key) => cache.delete(key)));
+    return result;
   } catch {
     return null;
   }
 };
 
-const readSharedCache = async (): Promise<SharedPayload | null> => {
+// 폴백 경로: 서버가 실어 보낸 쿠키를 읽고 즉시 삭제한다.
+const readSharedFromCookie = (): NormalizedShare | null => {
+  const match = document.cookie.match(/(?:^|; )shared_content=([^;]*)/);
+  if (!match) return null;
+  document.cookie = `${SHARE_COOKIE_NAME}=; Max-Age=0; path=/`;
   try {
-    const cache = await caches.open('shared-content');
-    const response = await cache.match('/shared-payload');
-    if (!response) return null;
-    const payload = (await response.json()) as SharedPayload;
-    await cache.delete('/shared-payload');
-    return payload;
+    const payload = JSON.parse(decodeURIComponent(match[1])) as {
+      type?: string;
+      text?: string;
+      images?: string[];
+    };
+    if (payload.type === 'sms' && typeof payload.text === 'string') {
+      return { type: 'sms', text: payload.text };
+    }
+    if (payload.type === 'image' && Array.isArray(payload.images)) {
+      const files = payload.images
+        .slice(0, MAX_SHARED_IMAGES)
+        .map((dataUrl, i) => dataUrlToFile(dataUrl, `shared-${i}`));
+      if (files.length > 0) return { type: 'image', files };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -427,8 +777,8 @@ const HomePage = () => {
   const resultRef = useRef<HTMLDivElement>(null);
 
   // 결과 카드는 폼 아래에 새로 나타나는데, 폼이 길면 화면 밖으로 벗어날 수
-  // 있다. 결과가 생기면 그쪽으로 스크롤하고, aria-live로 스크린 리더 사용자
-  // 에게도 새 결과가 나타났음을 알린다.
+  // 있다. 결과가 생기면 그쪽으로 스크롤하고, aria-live로 스크린 리더에도
+  // 알린다.
   useEffect(() => {
     if (result) {
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -439,26 +789,22 @@ const HomePage = () => {
     }
   }, [result]);
 
-  // 서비스 워커가 공유받은 내용을 Cache Storage에 남겨두고 이 페이지로
-  // ?shared=1과 함께 리다이렉트했다면(또는, 서비스 워커가 아직 활성화되지
-  // 않았던 드문 경우엔 쿠키로) 여기서 한 번 읽어와 폼에 채운다. 공유받은
-  // 이미지는 원본 그대로일 수 있어(업로드 흐름과 달리 다운스케일이 적용되지
-  // 않음) downscaleImage를 다시 거쳐 업로드 흐름과 동일하게 처리한다.
+  // ?shared=1로 도착했으면 공유된 내용을 한 번 읽어 폼에 채운다. 정상 경로는
+  // Cache Storage, 설치 직후 폴백 경로는 쿠키. 공유 이미지는 다운스케일이
+  // 적용되지 않은 원본일 수 있어 downscaleImage를 거쳐 업로드 흐름과 동일하게
+  // 처리한다. 실패는 조용히 무시하고 빈 폼을 보여준다.
   useEffect(() => {
     const consumeSharedContent = async () => {
       const url = new URL(window.location.href);
       if (url.searchParams.get('shared') !== '1') return;
 
-      const payload = (await readSharedCache()) ?? readSharedCookie();
-
-      if (payload) {
-        if (payload.type === 'sms') {
-          setSharedContent({ type: 'sms', messageBody: payload.text });
+      const shared = (await readSharedFromCache()) ?? readSharedFromCookie();
+      if (shared) {
+        if (shared.type === 'sms') {
+          setSharedContent({ type: 'sms', messageBody: shared.text });
         } else {
-          const downscaled = await Promise.all(
-            payload.images.map((dataUrl) => downscaleImage(dataUrlToFile(dataUrl, 'shared-image'))),
-          );
-          setSharedContent({ type: 'image', images: downscaled });
+          const images = await Promise.all(shared.files.map((file) => downscaleImage(file)));
+          setSharedContent({ type: 'image', images });
         }
       }
 
@@ -511,105 +857,27 @@ const HomePage = () => {
 export default HomePage;
 ```
 
-Note: this task's `page.tsx` imports `InstallGuide` from `@/components/InstallGuide`, which doesn't exist until Task 5 completes. If executing tasks strictly in order, this means `tsc`/build will fail between Task 4 and Task 5 — that's expected and fine within a single work session (fix it by doing Task 5 immediately after), but do not merge/ship Task 4 alone without Task 5.
+- [ ] **Step 3: Run tsc/lint/build**
 
-- [ ] **Step 4: Run `tsc`/lint (expect the `InstallGuide` import to fail until Task 5 lands)**
-
-Run: `npx tsc --noEmit`
-Expected: FAILS with `Cannot find module '@/components/InstallGuide'` — this is expected at this point; proceed directly to Task 5 before considering Task 4 "done."
-
-- [ ] **Step 5: Commit anyway (Task 5 follows immediately in the same session)**
-
-```bash
-git add src/lib/imageDownscale.ts src/app/page.tsx
-git commit -m "feat: consume shared content and thread it into AnalyzeForm"
-```
-
----
-
-## Task 5: `InstallGuide` component
-
-**Files:**
-- Create: `src/components/InstallGuide.tsx`
-
-Completes the import Task 4 introduced. No test file (matches this project's convention for presentational client components).
-
-- [ ] **Step 1: Create `src/components/InstallGuide.tsx`**
-
-```tsx
-'use client';
-
-import { useState } from 'react';
-import { ChevronDown, Smartphone } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-
-// 새 shadcn 컴포넌트나 의존성을 추가하지 않는다 — 펼침/접힘은 다른 곳과
-// 동일하게 순수 useState + 조건부 렌더링으로 구현한다.
-export const InstallGuide = () => {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <Alert role="note" className="mb-5 border-none bg-muted/60">
-      <Smartphone className="size-4 text-muted-foreground" aria-hidden="true" />
-      <AlertDescription>
-        <div className="flex items-center justify-between gap-2">
-          <span>
-            안드로이드에서 홈 화면에 추가하면 카카오톡·갤러리에서 바로 공유할 수 있어요.
-            (iOS는 지원되지 않습니다)
-          </span>
-          <button
-            type="button"
-            onClick={() => setExpanded((prev) => !prev)}
-            aria-expanded={expanded}
-            className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary"
-          >
-            자세히 보기
-            <ChevronDown
-              className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-        {expanded && (
-          <ol className="mt-3 list-decimal space-y-1.5 pl-4 text-sm">
-            <li>크롬 메뉴(⋮)에서 &quot;홈 화면에 추가&quot;를 눌러 설치하세요.</li>
-            <li>카카오톡·문자 메시지를 길게 눌러 공유를 선택하고, 목록에서 안심스캔을 고르세요.</li>
-            <li>갤러리에서 스크린샷을 공유할 때도 안심스캔을 선택할 수 있어요.</li>
-            <li>공유한 내용은 이 화면에 자동으로 채워지며, 인증 후 분석하기를 누르면 됩니다.</li>
-          </ol>
-        )}
-      </AlertDescription>
-    </Alert>
-  );
-};
-```
-
-- [ ] **Step 2: Run `tsc`/lint — this should now be clean, resolving Task 4's dangling import**
-
-Run: `npx tsc --noEmit && pnpm lint`
-Expected: both clean.
-
-- [ ] **Step 3: Run the full test suite to confirm nothing broke**
-
-Run: `pnpm test`
-Expected: all pre-existing tests still pass (this feature adds no new Vitest coverage of its own, per the established convention for client-only UI/PWA code — Task 6's server route is the exception).
+Run: `npx tsc --noEmit && pnpm lint && pnpm build`
+Expected: all clean (the `InstallGuide` and `SharedContent` imports resolve — Tasks 4 and 5 landed them).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/components/InstallGuide.tsx
-git commit -m "feat: add install/usage guide to the home page"
+git add src/lib/imageDownscale.ts src/app/page.tsx
+git commit -m "feat: consume shared content on load and seed the form"
 ```
 
 ---
 
-## Task 6: Server fallback route for `/share-target`
+## Task 7: Server fallback route for `/share-target`
 
 **Files:**
 - Create: `src/app/share-target/route.ts`
 - Test: `src/app/share-target/route.test.ts`
 
-This only matters in the rare window right after install, before the service worker has activated (see spec §7). Unlike Tasks 1-5, this is server code and gets full TDD coverage, following the existing `route.test.ts` conventions.
+Only reached in the rare window right after install, before the service worker activates (spec §7). Server code, so it gets full TDD coverage. Independent of Tasks 2–6.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -620,11 +888,18 @@ import { describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 
-const makeShareRequest = (formData: FormData) => {
-  return new NextRequest('http://localhost/share-target', {
-    method: 'POST',
-    body: formData,
-  });
+const makeShareRequest = (formData: FormData) =>
+  new NextRequest('http://localhost/share-target', { method: 'POST', body: formData });
+
+// 라우트는 명시적으로 encodeURIComponent(JSON.stringify(payload))를 쿠키 값으로
+// 쓰고 Set-Cookie 헤더에 직접 넣으므로, 테스트도 그 헤더를 직접 파싱해
+// 인코딩 계층을 한 번만 되돌린다(NextResponse 쿠키 직렬화 동작에 의존하지 않음).
+const readCookiePayload = (res: Response) => {
+  const setCookie = res.headers.get('set-cookie');
+  if (!setCookie) return null;
+  const match = setCookie.match(/shared_content=([^;]*)/);
+  if (!match) return null;
+  return JSON.parse(decodeURIComponent(match[1]));
 };
 
 describe('POST /share-target', () => {
@@ -635,24 +910,23 @@ describe('POST /share-target', () => {
     const res = await POST(makeShareRequest(formData));
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toContain('/?shared=1');
-
-    const cookie = res.cookies.get('shared_content');
-    expect(cookie).toBeDefined();
-    const payload = JSON.parse(decodeURIComponent(cookie!.value));
-    expect(payload).toEqual({ type: 'sms', text: '엄마 나 사고났어 이 계좌로 보내줘' });
+    expect(readCookiePayload(res)).toEqual({ type: 'sms', text: '엄마 나 사고났어 이 계좌로 보내줘' });
   });
 
-  it('redirects and sets a cookie with the image data URL for a small image share', async () => {
+  it('falls back to the url field when text is absent', async () => {
     const formData = new FormData();
-    const smallImage = new File([new Uint8Array([1, 2, 3])], 'shot.jpg', { type: 'image/jpeg' });
-    formData.set('images', smallImage);
+    formData.set('url', 'https://scam.example.com/login');
 
     const res = await POST(makeShareRequest(formData));
-    expect(res.status).toBe(303);
+    expect(readCookiePayload(res)).toEqual({ type: 'sms', text: 'https://scam.example.com/login' });
+  });
 
-    const cookie = res.cookies.get('shared_content');
-    expect(cookie).toBeDefined();
-    const payload = JSON.parse(decodeURIComponent(cookie!.value));
+  it('sets a cookie with the image data URL for a small image share', async () => {
+    const formData = new FormData();
+    formData.set('images', new File([new Uint8Array([1, 2, 3])], 'shot.jpg', { type: 'image/jpeg' }));
+
+    const res = await POST(makeShareRequest(formData));
+    const payload = readCookiePayload(res);
     expect(payload.type).toBe('image');
     expect(payload.images[0]).toMatch(/^data:image\/jpeg;base64,/);
   });
@@ -660,30 +934,25 @@ describe('POST /share-target', () => {
   it('prioritizes an image over text when both are shared together', async () => {
     const formData = new FormData();
     formData.set('text', '캡션입니다');
-    const smallImage = new File([new Uint8Array([1, 2, 3])], 'shot.jpg', { type: 'image/jpeg' });
-    formData.set('images', smallImage);
+    formData.set('images', new File([new Uint8Array([1, 2, 3])], 'shot.jpg', { type: 'image/jpeg' }));
 
     const res = await POST(makeShareRequest(formData));
-    const cookie = res.cookies.get('shared_content');
-    const payload = JSON.parse(decodeURIComponent(cookie!.value));
-    expect(payload.type).toBe('image');
+    expect(readCookiePayload(res).type).toBe('image');
   });
 
-  it('redirects without setting a cookie when the image would exceed the cookie size limit', async () => {
+  it('redirects without a cookie when the encoded image would exceed the size limit', async () => {
     const formData = new FormData();
-    // 3000자 상한을 넘도록 충분히 큰 더미 이미지
-    const largeImage = new File([new Uint8Array(4000)], 'big.jpg', { type: 'image/jpeg' });
-    formData.set('images', largeImage);
+    formData.set('images', new File([new Uint8Array(4000)], 'big.jpg', { type: 'image/jpeg' }));
 
     const res = await POST(makeShareRequest(formData));
     expect(res.status).toBe(303);
-    expect(res.cookies.get('shared_content')).toBeUndefined();
+    expect(res.headers.get('set-cookie')).toBeNull();
   });
 
-  it('redirects even when the request body cannot be parsed as form data', async () => {
+  it('redirects even when the body cannot be parsed as form data', async () => {
     const req = new NextRequest('http://localhost/share-target', {
       method: 'POST',
-      body: 'not form data at all',
+      body: 'not form data',
       headers: { 'content-type': 'application/json' },
     });
 
@@ -697,7 +966,7 @@ describe('POST /share-target', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/app/share-target/route.test.ts`
-Expected: FAIL — `Cannot find module './route'`
+Expected: FAIL — `Cannot find module './route'`. (If instead they fail because `req.formData()` throws in the test env, stop and resolve the harness's multipart support before continuing — see spec §10.)
 
 - [ ] **Step 3: Write the implementation**
 
@@ -708,53 +977,61 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const SHARE_COOKIE_NAME = 'shared_content';
 const SHARE_COOKIE_MAX_AGE_SECONDS = 60;
-// 브라우저 쿠키 크기 제한(도메인당 항목 하나 기준 대략 4KB)을 넘지 않도록
-// 여유를 두고 상한을 둔다 — 이미지가 이보다 크면 쿠키에 실어 보낼 수 없다.
-const MAX_COOKIE_VALUE_LENGTH = 3000;
+// 브라우저의 항목당 쿠키 크기 한도(~4KB)를 감안한 최종(인코딩된) 값 길이 상한.
+const MAX_COOKIE_VALUE_LENGTH = 3800;
 
 type SharedPayload = { type: 'sms'; text: string } | { type: 'image'; images: string[] };
 
-// 서비스 워커가 아직 활성화되지 않은, 설치 직후의 아주 짧은 시간에만 실제로
-// 도달하는 경로다 — 정상적으로는 public/sw.js의 fetch 핸들러가 이 요청을
-// 가로챈다. 여기 도달한 내용은 어디에도 저장하지 않고, 쿠키에 실어 즉시
-// 리다이렉트한다(URL 자체에 내용을 싣지 않는다 — 브라우저 히스토리/서버
-// 로그에 노출될 위험이 있다).
+// 일부 공유 앱은 텍스트를 text가 아니라 url/title에 담는다 — sw.js와 동일 순서.
+const pickText = (formData: FormData): string | null => {
+  for (const field of ['text', 'url', 'title']) {
+    const value = formData.get(field);
+    if (typeof value === 'string' && value.trim().length > 0) return value;
+  }
+  return null;
+};
+
+// 서비스 워커가 아직 활성화되지 않은 설치 직후의 짧은 시간에만 실제로 도달하는
+// 경로다 — 정상적으로는 public/sw.js가 이 요청을 가로챈다. 내용은 어디에도
+// 저장하지 않고, 쿠키에 실어 즉시 리다이렉트한다(URL에 내용을 싣지 않는다 —
+// 브라우저 히스토리/서버 로그 노출 위험). 쿠키 값 인코딩을 명시적으로 제어
+// 하려고 Set-Cookie 헤더를 직접 구성한다(encodeURIComponent 1회).
 export const POST = async (req: NextRequest) => {
   let payload: SharedPayload | null = null;
 
   try {
     const formData = await req.formData();
-    const sharedText = formData.get('text');
     const files = formData
       .getAll('images')
       .filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
-    // 캡션이 있는 사진 공유처럼 텍스트와 이미지가 동시에 오는 경우, 이미지를
-    // 우선한다 — sw.js의 handleShareTarget과 동일한 우선순위.
+    // 이미지 우선 — sw.js의 handleShareTarget과 동일한 우선순위. 폴백은 첫
+    // 한 장만 쿠키로 처리한다.
     if (files.length > 0) {
       const file = files[0];
-      const buffer = await file.arrayBuffer();
-      const base64 = Buffer.from(buffer).toString('base64');
-      const candidate = `data:${file.type};base64,${base64}`;
-      if (candidate.length <= MAX_COOKIE_VALUE_LENGTH) {
-        payload = { type: 'image', images: [candidate] };
-      }
-      // 상한을 넘으면 payload를 null로 둔다 — 쿠키 없이 리다이렉트만 하고,
-      // 클라이언트는 빈 폼을 보여준다.
-    } else if (typeof sharedText === 'string' && sharedText.trim().length > 0) {
-      payload = { type: 'sms', text: sharedText };
+      const base64 = Buffer.from(await file.arrayBuffer()).toString('base64');
+      payload = { type: 'image', images: [`data:${file.type};base64,${base64}`] };
+    } else {
+      const text = pickText(formData);
+      if (text) payload = { type: 'sms', text };
     }
   } catch {
     // 파싱 실패는 빈 폼으로 이어지도록 조용히 넘어간다.
+    payload = null;
   }
 
   const response = NextResponse.redirect(new URL('/?shared=1', req.url), 303);
 
   if (payload) {
-    response.cookies.set(SHARE_COOKIE_NAME, encodeURIComponent(JSON.stringify(payload)), {
-      maxAge: SHARE_COOKIE_MAX_AGE_SECONDS,
-      path: '/',
-    });
+    const cookieValue = encodeURIComponent(JSON.stringify(payload));
+    // 최종 인코딩된 값 길이로 검사한다 — 상한을 넘으면(대개 큰 이미지) 쿠키를
+    // 싣지 않고, 클라이언트는 빈 폼을 보여준다.
+    if (cookieValue.length <= MAX_COOKIE_VALUE_LENGTH) {
+      response.headers.append(
+        'Set-Cookie',
+        `${SHARE_COOKIE_NAME}=${cookieValue}; Max-Age=${SHARE_COOKIE_MAX_AGE_SECONDS}; Path=/; SameSite=Lax`,
+      );
+    }
   }
 
   return response;
@@ -764,12 +1041,12 @@ export const POST = async (req: NextRequest) => {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/app/share-target/route.test.ts`
-Expected: PASS (5 tests)
+Expected: PASS (6 tests).
 
-- [ ] **Step 5: Run the full suite, tsc, and lint**
+- [ ] **Step 5: Run the full suite, tsc, lint**
 
 Run: `pnpm test && npx tsc --noEmit && pnpm lint`
-Expected: full suite green, zero type errors, lint clean
+Expected: full suite green, zero type errors, lint clean.
 
 - [ ] **Step 6: Commit**
 
@@ -780,34 +1057,20 @@ git commit -m "feat: add server-side share-target fallback for pre-activation wi
 
 ---
 
-## Task 7: Manual verification
+## Task 8: Manual verification
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Run `pnpm build && pnpm start`, open Chrome DevTools → Application → Manifest**
+- [ ] **Step 1: Installability.** `pnpm build && pnpm start`, open Chrome DevTools → Application → Manifest. Confirm the manifest loads with no errors, all four icons render, and Installability shows no blocking issues.
 
-Confirm the manifest loads with no errors, icons render correctly, and the "Installability" section shows no blocking issues.
+- [ ] **Step 2: Install via the in-app button.** On an Android device (or Chrome desktop with an installable origin), confirm the "홈 화면에 추가" button appears, installs the app, and opens in standalone mode. Reload — confirm the button is now hidden (already installed).
 
-- [ ] **Step 2: Install the app**
+- [ ] **Step 3: Share text.** Long-press a KakaoTalk/SMS message → Share → confirm 안심스캔 is in the sheet → select it → confirm the app opens with the SMS tab active, the text pre-filled, 발신번호 empty, and that completing Turnstile + 분석하기 returns a result (no 400 despite the empty sender).
 
-On an Android device (or Chrome's remote device emulation), use the browser menu's "Add to Home Screen" / install prompt. Confirm it installs and opens in standalone mode (no browser chrome).
+- [ ] **Step 4: Share a screenshot.** From Gallery, share an image → select 안심스캔 → confirm the screenshot tab is active and the image is pre-loaded. In DevTools, confirm the resulting data URL is downscaled (a few hundred KB, not the multi-MB original).
 
-- [ ] **Step 3: Share a KakaoTalk message**
+- [ ] **Step 5: Existing flow untouched.** From either pre-filled state, complete Turnstile and 분석하기 — confirm identical behavior to manual entry (same result card, same caching).
 
-Long-press a message in KakaoTalk → Share → confirm 안심스캔 appears in the share sheet → select it → confirm the app opens with the SMS/email tab active and the text pre-filled.
+- [ ] **Step 6: Guide + limits + iOS.** Confirm the `InstallGuide` shows near the top, "자세히 보기" expands/collapses, the usage-limit paragraph is present, and on iOS Safari the install button does NOT appear while the "(iOS는 지원되지 않습니다)" text does.
 
-- [ ] **Step 4: Share a gallery screenshot**
-
-From Photos/Gallery, share an image → confirm 안심스캔 appears → select it → confirm the app opens with the screenshot tab active and the image pre-loaded (check it went through the downscale step — inspect via DevTools that the resulting data URL is reasonably sized, not the original multi-MB file).
-
-- [ ] **Step 5: Confirm the existing flow is untouched**
-
-From the pre-filled state in either Step 3 or 4, complete Turnstile verification and click 분석하기 — confirm it behaves exactly like a manually-entered/uploaded submission (same result card, same caching behavior from the result-caching feature).
-
-- [ ] **Step 6: Confirm the guide and iOS notice**
-
-On the home page (any platform), confirm the `InstallGuide` notice is visible near the top, and that "자세히 보기" expands/collapses correctly.
-
-- [ ] **Step 7: (If feasible) Simulate the pre-activation fallback**
-
-Uninstall and reinstall the app, then immediately (before navigating within the app at all, to minimize the chance the service worker has activated) attempt a share. If it still works via the service worker, this edge case wasn't reproduced — that's fine, it's inherently a narrow timing window and the automated tests in Task 6 already cover the fallback route's logic directly.
+- [ ] **Step 7: (If feasible) Fallback.** Uninstall/reinstall and immediately share before opening the app, to try to hit the pre-activation cookie path. If it still routes through the service worker, that's fine — the narrow timing window is hard to hit, and Task 7's tests already cover the fallback route's logic directly.
