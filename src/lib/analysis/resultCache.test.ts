@@ -104,6 +104,25 @@ describe('getCachedResult', () => {
     const [firstKey, secondKey] = getMock.mock.calls.map((call) => call[0]);
     expect(firstKey).toBe(secondKey);
   });
+
+  it('does not collide when a delimiter-like character appears in a field, shifting the apparent boundary', async () => {
+    getMock.mockResolvedValue(null);
+    // 필드 안에 구분자로 쓰일 법한 문자가 있어도 필드 경계가 흔들리지
+    // 않아야 한다 — 예전 구현(bare `|` 연결)에서는 아래 두 입력이 동일한
+    // 문자열로 이어붙여져 같은 캐시 키를 만들었다.
+    await getCachedResult({
+      type: 'sms',
+      senderNumber: 'SENDER-A',
+      messageBody: '123456|이 문자는 위험합니다 지금 확인',
+    });
+    await getCachedResult({
+      type: 'sms',
+      senderNumber: 'SENDER-A|123456',
+      messageBody: '이 문자는 위험합니다 지금 확인',
+    });
+    const [firstKey, secondKey] = getMock.mock.calls.map((call) => call[0]);
+    expect(firstKey).not.toBe(secondKey);
+  });
 });
 
 describe('setCachedResult', () => {

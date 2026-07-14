@@ -28,14 +28,15 @@ export const isCacheableInput = (input: AnalysisInput): input is CacheableInput 
 
 // 발신번호/발신 주소를 해시에 포함한다 — 시스템 프롬프트가 발신 정보 자체를
 // 분석 근거(스푸핑 여부 등)로 사용하므로, 본문이 같아도 발신 정보가 다르면
-// 다른 판정이 나올 수 있다. 캐시 히트율보다 정확성을 우선한다. 객체 키
-// 순서에 의존하는 JSON.stringify 대신, 타입별로 필드 순서를 명시적으로
-// 고정한 문자열을 해시한다.
+// 다른 판정이 나올 수 있다. 캐시 히트율보다 정확성을 우선한다.
+// JSON.stringify를 배열에 적용한다 — 객체였다면 키 순서가 모호해질 수
+// 있었지만, 배열은 위치 고정이라 그 문제가 없고 문자열 이스케이프 덕분에
+// 필드 안의 구분자성 문자로 인한 경계 혼동도 없다.
 const buildCacheKey = (input: CacheableInput): string => {
   const canonical =
     input.type === 'sms'
-      ? `sms|${input.senderNumber}|${input.messageBody}`
-      : `email|${input.senderAddress}|${input.subject}|${input.body}`;
+      ? JSON.stringify(['sms', input.senderNumber, input.messageBody])
+      : JSON.stringify(['email', input.senderAddress, input.subject, input.body]);
   const hash = createHash('sha256').update(canonical).digest('hex');
   return `cache:analysis:${hash}`;
 };
