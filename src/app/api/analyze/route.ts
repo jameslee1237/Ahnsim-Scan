@@ -4,6 +4,7 @@ import { analyzeMessage } from '@/lib/analysis/provider';
 import { checkIpRateLimit } from '@/lib/security/rateLimit';
 import { checkGlobalQuota } from '@/lib/security/quotaGuard';
 import { verifyTurnstileToken } from '@/lib/security/turnstile';
+import { getCachedResult, isCacheableInput, setCachedResult } from '@/lib/analysis/resultCache';
 
 const getClientIp = (req: NextRequest): string => {
   const forwardedFor = req.headers.get('x-forwarded-for');
@@ -68,6 +69,17 @@ export const POST = async (req: NextRequest) => {
       );
     }
 
+    // 동일한 문자/이메일이 이미 캐시되어 있다면 전역 쿼터 가드와 LLM 호출을
+    // 모두 건너뛰고 즉시 반환한다 — 이것이 캐싱의 실제 절감 효과다.
+    // getCachedResult 자체가 실패를 내부에서 흡수하므로(fail open) 이
+    // try 블록의 기존 503 처리와 충돌하지 않는다.
+    if (isCacheableInput(parsedInput.data)) {
+      const cached = await getCachedResult(parsedInput.data);
+      if (cached) {
+        return NextResponse.json(cached);
+      }
+    }
+
     const quotaResult = await checkGlobalQuota();
     if (!quotaResult.allowed) {
       const message =
@@ -110,6 +122,10 @@ export const POST = async (req: NextRequest) => {
         { error: '스크린샷에서 메시지를 읽을 수 없습니다. 메시지가 선명하게 보이는 스크린샷인지 확인해주세요.' },
         { status: 422 },
       );
+    }
+
+    if (isCacheableInput(parsedInput.data)) {
+      await setCachedResult(parsedInput.data, validatedResult);
     }
 
     return NextResponse.json(validatedResult);

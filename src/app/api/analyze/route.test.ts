@@ -13,12 +13,18 @@ vi.mock('@/lib/security/quotaGuard', () => ({
 vi.mock('@/lib/analysis/provider', () => ({
   analyzeMessage: vi.fn(),
 }));
+vi.mock('@/lib/analysis/resultCache', () => ({
+  isCacheableInput: vi.fn(),
+  getCachedResult: vi.fn(),
+  setCachedResult: vi.fn(),
+}));
 
 import { POST } from './route';
 import { verifyTurnstileToken } from '@/lib/security/turnstile';
 import { checkIpRateLimit } from '@/lib/security/rateLimit';
 import { checkGlobalQuota } from '@/lib/security/quotaGuard';
 import { analyzeMessage } from '@/lib/analysis/provider';
+import { getCachedResult, isCacheableInput, setCachedResult } from '@/lib/analysis/resultCache';
 
 const makeRequest = (body: unknown) => {
   return new NextRequest('http://localhost/api/analyze', {
@@ -49,6 +55,14 @@ describe('POST /api/analyze', () => {
     vi.mocked(verifyTurnstileToken).mockResolvedValue(true);
     vi.mocked(checkIpRateLimit).mockResolvedValue({ allowed: true, remaining: 9, reset: 0 });
     vi.mocked(checkGlobalQuota).mockResolvedValue({ allowed: true });
+    // 기본값은 실제 구현과 동일한 로직(sms/email만 캐시 대상)으로 두고,
+    // 캐시는 기본적으로 미스로 둔다 — 이렇게 하면 캐시를 명시적으로 다루지
+    // 않는 기존 테스트들이 이전과 동일하게 동작한다.
+    vi.mocked(isCacheableInput).mockImplementation(
+      (input) => input.type === 'sms' || input.type === 'email',
+    );
+    vi.mocked(getCachedResult).mockResolvedValue(null);
+    vi.mocked(setCachedResult).mockResolvedValue(undefined);
   });
 
   it('returns 403 when turnstile verification fails', async () => {
@@ -201,5 +215,58 @@ describe('POST /api/analyze', () => {
     });
     const res = await POST(makeRequest(validImagePayload));
     expect(res.status).toBe(200);
+  });
+
+  it('returns the cached result directly on a cache hit, without calling analyzeMessage or checkGlobalQuota', async () => {
+    vi.mocked(getCachedResult).mockResolvedValue({
+      verdict: '위험',
+      riskScore: 88,
+      redFlags: [{ flag: '긴급성 조성', evidence: '즉시 확인' }],
+      explanation: '설명',
+      recommendedAction: '조치',
+      extractedText: '',
+    });
+
+    const res = await POST(makeRequest(validSmsPayload));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.verdict).toBe('위험');
+    expect(analyzeMessage).not.toHaveBeenCalled();
+    expect(checkGlobalQuota).not.toHaveBeenCalled();
+  });
+
+  it('caches the result after a successful sms analysis on a cache miss', async () => {
+    const freshResult = {
+      verdict: '위험' as const,
+      riskScore: 88,
+      redFlags: [{ flag: '긴급성 조성', evidence: '즉시 확인' }],
+      explanation: '설명',
+      recommendedAction: '조치',
+      extractedText: '',
+    };
+    vi.mocked(analyzeMessage).mockResolvedValue(freshResult);
+
+    const res = await POST(makeRequest(validSmsPayload));
+    expect(res.status).toBe(200);
+    expect(setCachedResult).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'sms' }),
+      freshResult,
+    );
+  });
+
+  it('does not check or write the cache for image input', async () => {
+    vi.mocked(analyzeMessage).mockResolvedValue({
+      verdict: '위험',
+      riskScore: 90,
+      redFlags: [{ flag: '긴급성 조성', evidence: '즉시 확인' }],
+      explanation: '설명',
+      recommendedAction: '조치',
+      extractedText: '발신: 010-0000-0000\n택배 도착',
+    });
+
+    const res = await POST(makeRequest(validImagePayload));
+    expect(res.status).toBe(200);
+    expect(getCachedResult).not.toHaveBeenCalled();
+    expect(setCachedResult).not.toHaveBeenCalled();
   });
 });
