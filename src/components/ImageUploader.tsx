@@ -93,8 +93,8 @@ export const ImageUploader = ({ images, onImagesChange }: IImageUploaderProps) =
         onDragLeave={() => setIsDraggingOver(false)}
         onDrop={handleDrop}
         onPaste={handlePaste}
-        className={`flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
-          isDraggingOver ? 'border-primary bg-primary/5' : 'border-input'
+        className={`flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
+          isDraggingOver ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-slate-50/60 hover:bg-slate-50'
         }`}
       >
         <ImagePlus className="size-6 text-muted-foreground" aria-hidden="true" />
