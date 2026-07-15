@@ -29,7 +29,7 @@ export const buildUserContent = (input: AnalysisInput): string => {
   if (input.type === 'sms') {
     return [
       '다음 문자 메시지를 분석하세요.',
-      `발신번호: ${input.senderNumber}`,
+      `발신번호: ${input.senderNumber || '(알 수 없음)'}`,
       '<message_to_analyze>',
       input.messageBody,
       '</message_to_analyze>',

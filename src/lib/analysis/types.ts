@@ -4,7 +4,11 @@ export const MAX_INPUT_LENGTH = 2000;
 
 export const SmsInputSchema = z.object({
   type: z.literal('sms'),
-  senderNumber: z.string().min(1).max(50),
+  // 발신번호는 선택값이다 — 공유(카카오톡/문자)로 받은 텍스트에는 본문만
+  // 있고 발신번호가 없으므로 빈 문자열을 허용한다. 발신번호 스푸핑은 여러
+  // 신호 중 하나일 뿐이고, 시스템 프롬프트는 본문만으로도 판정하도록
+  // 설계되어 있다(예: 가족 사칭은 발신 정보가 없어도 강한 위험 신호).
+  senderNumber: z.string().max(50),
   messageBody: z.string().min(5).max(MAX_INPUT_LENGTH),
 });
 
