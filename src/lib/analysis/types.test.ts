@@ -13,6 +13,15 @@ describe('AnalysisInputSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts sms input with an empty senderNumber (shared text has no sender)', () => {
+    const result = AnalysisInputSchema.safeParse({
+      type: 'sms',
+      senderNumber: '',
+      messageBody: '엄마 나 폰 액정 깨져서 이 번호로 문자해',
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('rejects sms input with a body shorter than 5 characters', () => {
     const result = AnalysisInputSchema.safeParse({
       type: 'sms',
