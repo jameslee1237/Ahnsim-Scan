@@ -39,3 +39,19 @@ export const downscaleImage = async (file: File): Promise<string> => {
 
   return canvas.toDataURL('image/jpeg', JPEG_QUALITY);
 };
+
+// data URL(서버 폴백 쿠키가 실어 보낸 이미지)을 File로 되돌린다 —
+// downscaleImage가 File을 받으므로, 공유받은 이미지도 업로드 이미지와 동일한
+// 다운스케일 경로를 타게 하려면 먼저 File로 되돌려야 한다. (정상 경로의
+// 이미지는 서비스 워커가 Blob으로 저장하므로 page.tsx가 직접 File로 만든다.)
+export const dataUrlToFile = (dataUrl: string, filename: string): File => {
+  const [header, base64] = dataUrl.split(',');
+  const mimeMatch = header.match(/data:(.*?);base64/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new File([bytes], filename, { type: mimeType });
+};
