@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Noto_Sans_KR } from 'next/font/google';
+import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration';
 import './globals.css';
 
 const notoSansKr = Noto_Sans_KR({
@@ -22,7 +23,10 @@ export const viewport: Viewport = {
 const RootLayout = ({ children }: { children: ReactNode }) => {
   return (
     <html lang="ko" className={notoSansKr.variable}>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <ServiceWorkerRegistration />
+        {children}
+      </body>
     </html>
   );
 };
