@@ -175,7 +175,7 @@ export const AnalyzeForm = ({ onResult, initialShared }: IAnalyzeFormProps) => {
     remaining <= 0
       ? 'text-destructive'
       : remaining <= MAX_INPUT_LENGTH * 0.1
-        ? 'text-amber-600 dark:text-amber-400'
+        ? 'text-amber-600'
         : 'text-muted-foreground';
 
   return (
@@ -190,13 +190,13 @@ export const AnalyzeForm = ({ onResult, initialShared }: IAnalyzeFormProps) => {
 
           <Tabs value={messageType} onValueChange={(value) => setMessageType(value as MessageType)}>
             <TabsList className="w-full">
-              <TabsTrigger value="sms" className="flex-1">
+              <TabsTrigger value="sms" className="flex-1 data-active:text-primary data-active:font-semibold">
                 문자(SMS)
               </TabsTrigger>
-              <TabsTrigger value="email" className="flex-1">
+              <TabsTrigger value="email" className="flex-1 data-active:text-primary data-active:font-semibold">
                 이메일
               </TabsTrigger>
-              <TabsTrigger value="image" className="flex-1">
+              <TabsTrigger value="image" className="flex-1 data-active:text-primary data-active:font-semibold">
                 스크린샷
               </TabsTrigger>
             </TabsList>
@@ -292,7 +292,11 @@ export const AnalyzeForm = ({ onResult, initialShared }: IAnalyzeFormProps) => {
               버튼이 화면 밖으로 밀려나지 않도록 하단에 고정한다. 데스크톱
               (sm 이상)에서는 일반적인 폼 흐름으로 되돌아간다. */}
           <div className="sticky bottom-4 z-10 flex gap-2 rounded-lg bg-background/95 py-2 backdrop-blur sm:static sm:bg-transparent sm:py-0 sm:backdrop-blur-none">
-            <Button type="submit" disabled={loading} className="flex-1">
+            <Button
+              type="submit"
+              disabled={loading}
+              className="flex-1 bg-gradient-to-br from-blue-600 to-blue-700 shadow-sm shadow-blue-600/25 hover:from-blue-700 hover:to-blue-800"
+            >
               {loading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
               {loading ? '분석 중...' : '분석하기'}
             </Button>
