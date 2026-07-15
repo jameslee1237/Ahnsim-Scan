@@ -47,7 +47,7 @@
 **4.1 디자인 토큰 (`src/app/globals.css`)**
 - `--primary`를 `#2563eb`로 조정(그리고 `--ring` 동기화). 프라이머리 그라디언트용 보조 변수(예: `--primary-strong: #1e5fd0`) 추가 가능.
 - 따뜻한 배경/서피스/소프트-블루 틴트/민트 액센트 토큰 추가(라이트 전용). 순수 무채색 위주였던 팔레트에 약간의 채도(웜/블루 틴트) 부여.
-- 다크 모드 제거: `.dark { … }` 토큰 블록과 `@custom-variant dark (&:is(.dark *))`를 삭제하고, 컴포넌트의 `dark:` 변형 클래스도 제거(§6).
+- 다크 모드 제거: `.dark { … }` 토큰 블록을 삭제한다. 단, `@custom-variant dark (&:is(.dark *))`(클래스 기반)는 **유지**한다 — 삭제하면 `dark:`가 OS `prefers-color-scheme` 미디어로 되돌아가 생성된 shadcn `ui/*`의 남은 `dark:` 유틸리티가 OS 다크에서 활성화된다. 유지하면 `.dark` 클래스가 없어 전부 무력화된다. 재스타일하는 앱 컴포넌트(ResultCard/AnalyzeForm)의 `dark:`는 제거, `ui/*`의 `dark:`는 무해하게 남긴다(§6).
 - 판정 색은 컴포넌트 로컬 클래스(ResultCard)에서 계속 관리.
 
 **4.2 히어로 (`src/app/page.tsx`)**
@@ -82,7 +82,7 @@
 
 ## 6. 다크 모드 제거
 
-다크 모드를 제거하고 **라이트 모드 전용**으로 만든다. 현재 다크 모드는 클래스 기반(`.dark`)이며 이를 켜는 코드가 없어 사실상 비활성 상태다. 정리 범위: `globals.css`의 `.dark { … }` 토큰 블록과 `@custom-variant dark (&:is(.dark *))` 삭제, 컴포넌트 전반의 `dark:` 변형 클래스 제거(예: `ResultCard`의 판정 뱃지·`mark` 하이라이트, `AnalyzeForm`의 amber 카운터 등). 삭제 후 라이트 팔레트만 남고 렌더링이 동일하게 유지되는지 확인한다.
+다크 모드를 제거하고 **라이트 모드 전용**으로 만든다. 현재 다크 모드는 클래스 기반(`.dark`)이며 이를 켜는 코드가 없어 사실상 비활성 상태다. 정리 범위: `globals.css`의 `.dark { … }` 토큰 블록 삭제; `@custom-variant dark (&:is(.dark *))`는 **유지**(아래 주의); 재스타일하는 앱 컴포넌트의 `dark:` 클래스 제거(예: `ResultCard`의 판정 뱃지·`mark` 하이라이트, `AnalyzeForm`의 amber 카운터). **주의**: `@custom-variant dark`를 삭제하면 Tailwind v4에서 `dark:`가 `prefers-color-scheme` 미디어 기반으로 되돌아가, 생성된 shadcn `ui/*`에 남은 `dark:` 유틸리티가 OS 다크 설정에서 활성화되어 깨진 부분 다크 모드가 된다. 클래스 기반 변수를 유지하고 `.dark` 클래스를 어디서도 추가하지 않으면 그 유틸리티들은 전부 무력화된다. 삭제 후 라이트 팔레트만 남고 렌더링이 동일하게 유지되는지 확인한다.
 
 ## 7. 반응형
 
