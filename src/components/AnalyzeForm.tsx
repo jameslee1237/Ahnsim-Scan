@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import Script from 'next/script';
 import { Loader2, TriangleAlert } from 'lucide-react';
@@ -15,8 +15,14 @@ import { MAX_INPUT_LENGTH, type AnalysisResult } from '@/lib/analysis/types';
 
 type MessageType = 'sms' | 'email' | 'image';
 
+// page.tsx가 이 타입을 import해 재사용한다 — 한 곳에서만 정의한다.
+export type SharedContent =
+  | { type: 'sms'; messageBody: string }
+  | { type: 'image'; images: string[] };
+
 interface IAnalyzeFormProps {
   onResult: (result: AnalysisResult, displayText: string) => void;
+  initialShared?: SharedContent;
 }
 
 declare global {
@@ -46,13 +52,33 @@ const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '';
 // 과한 복잡도라 의도적으로 생략했다.
 const NARROW_VIEWPORT_THRESHOLD = 400;
 
-export const AnalyzeForm = ({ onResult }: IAnalyzeFormProps) => {
+export const AnalyzeForm = ({ onResult, initialShared }: IAnalyzeFormProps) => {
   const [messageType, setMessageType] = useState<MessageType>('sms');
   const [senderNumber, setSenderNumber] = useState('');
   const [senderAddress, setSenderAddress] = useState('');
   const [subject, setSubject] = useState('');
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
+
+  // 홈페이지가 공유받은 내용을 읽어오면 initialShared가 undefined에서 값으로
+  // 한 번 바뀐다 — 그 순간에만 해당 탭과 내용을 미리 채운다. 부모는 이 값을
+  // 상태로 한 번만 세팅하므로 참조가 안정적이라 [initialShared] 의존으로 충분
+  // 하다. (공유 텍스트는 발신번호 없이도 분석 가능하도록 스키마가 완화됨.)
+  useEffect(() => {
+    if (!initialShared) return;
+    if (initialShared.type === 'sms') {
+      // 부모가 넘겨준 공유 콘텐츠(props)를 폼 상태로 한 번 동기화하는 것이 이
+      // effect의 목적 그 자체이며, initialShared가 바뀌는 경우는 마운트 시
+      // 최초 1회뿐이다.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMessageType('sms');
+      setText(initialShared.messageBody);
+    } else {
+      setMessageType('image');
+      setImages(initialShared.images);
+    }
+  }, [initialShared]);
+
   const [turnstileToken, setTurnstileToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

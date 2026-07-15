@@ -38,6 +38,15 @@ describe('buildUserContent', () => {
     expect(bodyIndex).toBeLessThan(closeIndex);
   });
 
+  it('renders "(알 수 없음)" when the sms senderNumber is empty', () => {
+    const content = buildUserContent({
+      type: 'sms',
+      senderNumber: '',
+      messageBody: '엄마 나 폰 액정 깨져서 이 번호로 문자해',
+    });
+    expect(content).toContain('발신번호: (알 수 없음)');
+  });
+
   it('returns an instruction string (not image bytes) for image input, mentioning the image count', () => {
     const content = buildUserContent({
       type: 'image',
