@@ -175,7 +175,7 @@ export const AnalyzeForm = ({ onResult, initialShared }: IAnalyzeFormProps) => {
     remaining <= 0
       ? 'text-destructive'
       : remaining <= MAX_INPUT_LENGTH * 0.1
-        ? 'text-amber-600'
+        ? 'text-amber-700'
         : 'text-muted-foreground';
 
   return (

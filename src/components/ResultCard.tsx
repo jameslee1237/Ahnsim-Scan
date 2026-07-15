@@ -39,7 +39,7 @@ const VERDICT_STYLE: Record<
     subtitle: '주의가 필요해요 — 함부로 응답하지 마세요',
     header: 'from-amber-50 to-amber-100/70',
     tile: 'bg-amber-500',
-    score: 'text-amber-600',
+    score: 'text-amber-700',
     progress: '[&_[data-slot=progress-indicator]]:bg-amber-500',
   },
   위험: {
@@ -78,7 +78,7 @@ export const ResultCard = ({ result, originalText, onClear }: IResultCardProps) 
         </div>
         <div className="ml-auto text-right">
           <div className={`text-3xl leading-none font-extrabold ${style.score}`}>{score}</div>
-          <div className="text-[11px] text-slate-500">/ 100</div>
+          <div className="text-[11px] text-slate-600">/ 100</div>
         </div>
       </div>
 
