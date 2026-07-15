@@ -36,6 +36,9 @@ yarn-error.log*
 # exclude this path explicitly, since .gitignore alone doesn't stop them
 .claude/worktrees/
 
+# visual-companion brainstorm artifacts (local design tooling)
+.superpowers/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

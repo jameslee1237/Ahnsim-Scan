@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 // beforeinstallprompt는 표준 DOM 타입에 없어 직접 좁힌다.
 interface BeforeInstallPromptEvent extends Event {
@@ -43,9 +42,13 @@ export const InstallButton = () => {
   };
 
   return (
-    <Button type="button" variant="outline" onClick={handleInstall} className="mb-3 w-full">
+    <button
+      type="button"
+      onClick={handleInstall}
+      className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+    >
       <Download className="size-4" aria-hidden="true" />
-      홈 화면에 추가
-    </Button>
+      홈 화면에 추가하고 공유로 바로 검사하기
+    </button>
   );
 };

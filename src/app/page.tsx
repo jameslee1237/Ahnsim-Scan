@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
-import { PrivacyNotice } from '@/components/PrivacyNotice';
-import { InstallGuide } from '@/components/InstallGuide';
+import { HomeNotice } from '@/components/HomeNotice';
 import { AnalyzeForm, type SharedContent } from '@/components/AnalyzeForm';
 import { ResultCard } from '@/components/ResultCard';
 import { dataUrlToFile, downscaleImage } from '@/lib/imageDownscale';
@@ -148,19 +147,18 @@ const HomePage = () => {
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 bg-gradient-to-b from-primary/10 to-transparent"
       />
-      <div className="mb-8 flex flex-col items-center text-center">
-        <div className="mb-3 flex size-16 items-center justify-center rounded-full bg-primary/10">
-          <ShieldCheck className="size-8 text-primary" aria-hidden="true" />
+      <div className="mb-6 flex flex-col items-center text-center">
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 shadow-md shadow-blue-600/30">
+            <ShieldCheck className="size-6 text-white" aria-hidden="true" />
+          </div>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">안심스캔</h1>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          스미싱/피싱 문자·이메일·스크린샷 확인
-        </h1>
         <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-          문자, 이메일, 또는 스크린샷을 올리면 AI가 사기 여부를 분석해드려요.
+          문자·이메일·스크린샷, 사기인지 바로 확인
         </p>
       </div>
-      <InstallGuide />
-      <PrivacyNotice />
+      <HomeNotice />
       <AnalyzeForm onResult={handleResult} initialShared={sharedContent} />
       {result && (
         <div ref={resultRef} role="status" aria-live="polite">
