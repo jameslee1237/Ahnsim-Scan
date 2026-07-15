@@ -103,18 +103,30 @@ const HomePage = () => {
       const url = new URL(window.location.href);
       if (url.searchParams.get('shared') !== '1') return;
 
-      const shared = (await readSharedFromCache()) ?? readSharedFromCookie();
-      if (shared) {
-        if (shared.type === 'sms') {
-          setSharedContent({ type: 'sms', messageBody: shared.text });
-        } else {
-          const images = await Promise.all(shared.files.map((file) => downscaleImage(file)));
-          setSharedContent({ type: 'image', images });
+      try {
+        const shared = (await readSharedFromCache()) ?? readSharedFromCookie();
+        if (shared) {
+          if (shared.type === 'sms') {
+            setSharedContent({ type: 'sms', messageBody: shared.text });
+          } else {
+            // 한 장이 디코딩에 실패해도 나머지는 살린다 — allSettled로 성공한
+            // 것만 모은다(Promise.all이면 한 장 실패에 전부 버려진다).
+            const settled = await Promise.allSettled(
+              shared.files.map((file) => downscaleImage(file)),
+            );
+            const images = settled
+              .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+              .map((r) => r.value);
+            if (images.length > 0) setSharedContent({ type: 'image', images });
+          }
         }
+      } catch {
+        // 공유 내용 처리 실패는 조용히 무시하고 빈 폼을 보여준다.
+      } finally {
+        // 성공/실패와 무관하게 ?shared=1을 제거해 새로고침 시 재실행되지 않게 한다.
+        url.searchParams.delete('shared');
+        window.history.replaceState({}, '', url.toString());
       }
-
-      url.searchParams.delete('shared');
-      window.history.replaceState({}, '', url.toString());
     };
 
     void consumeSharedContent();
